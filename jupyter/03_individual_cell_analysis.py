@@ -79,11 +79,17 @@ for tidx in range(len(transcriptomes)):
     interp = interpolate.RegularGridInterpolator((yaxis, xaxis), isj, method='linear', bounds_error=True, fill_value=None)
     bins = np.linspace(0, isj.max(), 256)
 
-    cidx = 47
+    cellcount = np.zeros(cellnum, dtype=int)
+    cellid = cellcount.copy()
+    
     for cidx in range(cellnum):
         cdata = df.iloc[cmatches[cidx]]
         ccoords = coords[:2, label[ coords[1], coords[0] ] == cidx + 1 ].copy()
-        if len(ccoords[0]) > 10:
+        cellcount[cidx] = len(ccoords[0])
+        cellid[cidx] = int(cdata['Cell.ID..'])
+        filename = tdst + transcriptomes[tidx] + '_-_{:05d}_-_{:05d}.tif'.format(cidx, int(cdata['Cell.ID..']))
+        
+        if (len(ccoords[0]) > 2) and not os.path.isfile(filename):
             
             print('Processing', cidx)
             ss = objss[cidx]
@@ -132,13 +138,22 @@ for tidx in range(len(transcriptomes)):
                 ax[i].set_aspect('equal')
                 ax[i].margins(0)
 
-            title = '{}: {}: Cell ID {} [{}]'.format(sample, transcriptomes[tidx], int(cdata['Cell.ID..']), cidx)
+            title = '{}: {}: Cell ID {} [{}]'.format(sample, transcriptomes[tidx], cellid[cidx], cidx)
             fig.suptitle(title, fontsize=18)
             fig.tight_layout();
-            filename = tdst + 'diagnostic_' + transcriptomes[tidx] + '_-_{:05d}_-_{:05d}'.format(cidx, int(cdata['Cell.ID..']))
+            filename = tdst + 'diagnostic_' + transcriptomes[tidx] + '_-_{:05d}_-_{:05d}'.format(cidx, cellid[cidx])
             plt.savefig(filename + '.jpg', format='jpg', dpi=150, bbox_inches='tight', pil_kwargs={'optimize':True})
             plt.close()
 
-            filename = tdst + transcriptomes[tidx] + '_-_{:05d}_-_{:05d}.tif'.format(cidx, int(cdata['Cell.ID..']))
+            filename = tdst + transcriptomes[tidx] + '_-_{:05d}_-_{:05d}.tif'.format(cidx, cellid[cidx])
             print(filename)
             tf.imwrite(filename, dig, photometric='minisblack')
+            
+    filename = tdst + 'metacount_' + transcriptomes[tidx] + '.csv'
+    foo = pd.DataFrame()
+    foo['Label.ID.'] = np.arange(cellnum) + 1
+    foo['Cell.ID.'] = cellid
+    foo['Transcript.Count'] = cellcount
+    foo.to_csv(filename, index=False)
+    print(filename)
+             
