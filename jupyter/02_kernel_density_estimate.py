@@ -10,6 +10,23 @@ from KDEpy import FFTKDE
 from KDEpy.bw_selection import improved_sheather_jones as ISJ
 import argparse
 
+struc1 = ndimage.generate_binary_structure(2,1)
+struc2 = ndimage.generate_binary_structure(2,2)
+pows2 = 2**np.arange(20) + 1
+bdmatrix = ndimage.generate_binary_structure(2,1).astype(int)
+bdmatrix[1,1] = 1 - np.sum(bdmatrix)
+fs = 15
+bw = 15
+PP = 6
+stepsize = 5
+pp = 0
+
+wsrc = '../cell_dams/'
+nsrc = '../nuclear_mask/'
+psrc = '../proc/'
+osrc = '../data/'
+verbose = False
+
 def celllocs_read(filename):
     celllocs = pd.read_csv(filename)
     sel = [0,3,4,5,6,7,8,9]
@@ -123,29 +140,12 @@ def main():
     parser.add_argument('cfinish', metavar='raw_dir', type=int, help='directory where raw images are located')
     args = parser.parse_args()
 
-    struc1 = ndimage.generate_binary_structure(2,1)
-    struc2 = ndimage.generate_binary_structure(2,2)
-    pows2 = 2**np.arange(20) + 1
-    bdmatrix = ndimage.generate_binary_structure(2,1).astype(int)
-    bdmatrix[1,1] = 1 - np.sum(bdmatrix)
-    fs = 15
-    bw = 15
-    PP = 6
-    stepsize = 5
-    pp = 0
-
-    wsrc = '../cell_dams/'
-    nsrc = '../nuclear_mask/'
-    psrc = '../proc/'
-    osrc = '../data/'
     sample = args.sample
     cstart = args.cstart
     cfinish = args.cfinish
-    verbose = False
-
+    
     dst = '../kde/'
-
-    dst += sample + os.sep
+    dst = dst + sample + os.sep
     if not os.path.isdir(dst):
         os.mkdir(dst)
 
@@ -211,7 +211,7 @@ def main():
     # # Select a transcript and a cell
 
     for cidx in range(cstart,cfinish):
-        ratios = transcell.iloc[:, cidx]/metatrans['cyto_number']
+        #ratios = transcell.iloc[:, cidx]/metatrans['cyto_number']
         ss = (np.s_[max([0, metacell.loc[cidx, 'y0'] - PP]) : min([wall.shape[0], metacell.loc[cidx, 'y1'] + PP])],
               np.s_[max([1, metacell.loc[cidx, 'x0'] - PP]) : min([wall.shape[1], metacell.loc[cidx, 'x1'] + PP])])
         extent = (ss[1].start, ss[1].stop, ss[0].start, ss[0].stop)
@@ -234,7 +234,8 @@ def main():
             kdst = dst + transcriptomes[tidx] + os.sep
             if not os.path.isdir(kdst):
                 os.mkdir(kdst)
-            filename = kdst + 'c{}_p{}_s{}_b{}.jpg'.format(cidx, PP, stepsize, bw)
+            #filename = kdst + 'c{}_p{}_s{}_b{}.jpg'.format(cidx, PP, stepsize, bw)
+            filename = 'bar.txt'
             if not os.path.isfile(filename):
                 tmask = invidx == tidx
             
@@ -250,7 +251,7 @@ def main():
                 kde = kde.reshape( ( len(yaxis), len(xaxis) ), order='F')
                 maxkde = np.max(kde)
                 
-                ratio = ccoords.shape[1]/coords.shape[1]
+                #ratio = ccoords.shape[1]/coords.shape[1]
                 
                 # # Save results
                 
@@ -291,13 +292,13 @@ def main():
 
                     fig.tight_layout();
                     filename = kdst + 'c{}_p{}_s{}_b{}.jpg'.format(cidx, PP, stepsize, bw)
-                    print('Generated', filename)
                     plt.savefig(filename, format='jpg', dpi=96, bbox_inches='tight', pil_kwargs={'optimize':True})
                     plt.close()
 
                 meta = [cidx, PP, stepsize, bw, maxkde]
                 filename = kdst + 'c{}_p{}_s{}_b{}_m{:.25E}.npy'.format(*meta)
-                np.save(filename, kde*ratios[tidx])
+                np.save(filename, kde)
+                print('Generated', filename)
                     
 if __name__ == '__main__':
     main()
