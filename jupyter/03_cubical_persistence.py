@@ -118,7 +118,7 @@ def main():
                 with open(filename, 'w') as f:
                     json.dump(pers,f)
                     
-                print('Processed',jsname, '\t{}/{}'.format(counter,tcounter))
+                print('Processed',transcriptomes[tidx], jsname, '\t{}/{}'.format(counter,tcounter))
 
 if __name__ == '__main__':
     main()
