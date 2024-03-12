@@ -167,3 +167,5 @@ translocs/*
 *.pdf
 *.npy
 *.jpg
+*.png
+*.mp4
