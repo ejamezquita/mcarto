@@ -15,23 +15,23 @@ minprob = 74
 
 def correct_boundary_transcripts(tlabs, coords, label, tpercell, R = 25):
     for i in np.nonzero(tlabs == 0)[0]:
-        x,y = coords[:,i]
+        x,y = coords[:2,i]
         ss = np.s_[y - R : y + R, x - R : x + R]
         cells = np.unique(label[ss])[1:]
         newlab = cells[np.argmax(tpercell[cells])]
         com = np.flip(np.mean(np.asarray(np.nonzero(label[ss] == newlab)), axis=1))
         com[0] += x - R
         com[1] += y - R
-        dv = com - coords[:,i]
+        dv = com - coords[:2,i]
         dv = dv/np.linalg.norm(dv)
         delta = 1
-        x,y = (coords[:,i] + delta*dv).astype(int)
+        x,y = (coords[:2,i] + delta*dv).astype(int)
         
         while(label[y,x] != newlab) and (delta < 50):
             delta += 1
-            x,y = (coords[:,i] + delta*dv).astype(int)
+            x,y = (coords[:2,i] + delta*dv).astype(int)
         if delta < 50:
-            coords[:,i] = [x,y]
+            coords[:2,i] = [x,y]
             tlabs[i] = newlab
         else:
             print('Review index', i)
@@ -40,33 +40,42 @@ def correct_boundary_transcripts(tlabs, coords, label, tpercell, R = 25):
 
 def transcript_shift(i, ndist, nidxs, cat, cdtlabs, cdtmask, cdtcoords, edtmask, edtvals, label):
     mask = cdtlabs[nidxs[i]] == cat[i,1]
-    nearest = np.average(cdtcoords[:,nidxs[i][mask]], axis=1, weights = radius - ndist[i][mask])
-    dv = nearest - cdtcoords[:,edtvals[i]]
+    nearest = np.average(cdtcoords[:2,nidxs[i][mask]], axis=1, weights = radius - ndist[i][mask])
+    dv = nearest - cdtcoords[:2,edtvals[i]]
     dv = dv/np.linalg.norm(dv)
-    x,y = cdtcoords[:,edtvals[i]]
+    x,y = cdtcoords[:2,edtvals[i]]
     
     delta = 1
-    x,y = (cdtcoords[:,edtvals[i]] + delta*dv).astype(int)
+    x,y = (cdtcoords[:2,edtvals[i]] + delta*dv).astype(int)
     while(label[y,x] != cat[i,1]) and (delta < radius):
         delta += 1
-        x,y = (cdtcoords[:,edtvals[i]] + delta*dv).astype(int)
+        x,y = (cdtcoords[:2,edtvals[i]] + delta*dv).astype(int)
     if delta < radius:
         return [ [x,y], cat[i,1], True ]
     else:
-        nearest = cdtcoords[:,nidxs[i][mask][0]]
-        dv = nearest - cdtcoords[:,edtvals[i]]
+        nearest = cdtcoords[:2,nidxs[i][mask][0]]
+        dv = nearest - cdtcoords[:2,edtvals[i]]
         dv = dv/np.linalg.norm(dv)
-        x,y = cdtcoords[:,edtvals[i]]
+        x,y = cdtcoords[:2,edtvals[i]]
         
         delta = 1
-        x,y = (cdtcoords[:,edtvals[i]] + delta*dv).astype(int)
+        x,y = (cdtcoords[:2,edtvals[i]] + delta*dv).astype(int)
         while(label[y,x] != cat[i,1]) and (delta < radius):
             delta += 1
-            x,y = (cdtcoords[:,edtvals[i]] + delta*dv).astype(int)
+            x,y = (cdtcoords[:2,edtvals[i]] + delta*dv).astype(int)
         if delta < radius:
             return [ [x,y], cat[i,1], True ]
         else:
             return [ [x,y], cat[i,1], False ]
+
+# Produce a N x 4 matrix with metadata.
+# For each transcript, consider its nearest neighbors
+# Count how many neighbors belong to what cells
+# IF neighbors include transcripts belonging to more than 1 cell,
+# THEN 1st Col: Number of cells to which nearest neighbors belong
+#      2nd Col: Index of most popular cell (Cell with the most neighbors)
+#      3rd Col: BOOL: Current transcript cell location different from majority of neighbors
+#      4th Col: Percentage of neighbors belonging to most popular cell
 
 def get_neighbor_data(nidxs, indexing, minneighs, cdtlabs, cdtmask, cdtcoords, edtmask, edtvals):
     
@@ -98,7 +107,7 @@ def correct_shifted_transcripts(cdtlabs, cdtmask, cdtcoords, edtmask, edtvals, l
     for i in indexing:
         shift = transcript_shift(i, ndist, nidxs, cat, cdtlabs, cdtmask, cdtcoords, edtmask, edtvals, label)
         if shift[2]:
-            cdtcoords[:,edtvals[i]], cdtlabs[edtvals[i]] = shift[0], shift[1]
+            cdtcoords[:2,edtvals[i]], cdtlabs[edtvals[i]] = shift[0], shift[1]
         else:
             print('Pay attention to index\t',i)
 
@@ -125,8 +134,7 @@ def main():
         os.mkdir(dst)
         
     wall = tf.imread(wsrc + sample + '_dams.tif').astype(bool)
-    edt = tf.imread(nsrc + sample + '_EDT.tif')
-    nuclei = edt < 2
+    nuclei = tf.imread(nsrc + sample + '_EDT.tif') < 2
 
     edt = ndimage.distance_transform_cdt(wall, 'chessboard')
     label, cellnum = ndimage.label(wall, struc1)
@@ -141,10 +149,10 @@ def main():
 
     for tidx in range(len(transcriptomes)):
         
-        filename =  dst + 'location_corrected_' + sample +'_' + transcriptomes[tidx] + '.csv'
+        filename =  dst + 'location_corrected_' + sample +'_-_' + transcriptomes[tidx] + '.csv'
         if not os.path.isfile(filename):
-            print('----', transcriptomes[tidx], ':\n')
-            tcoords = data.loc[invidx == tidx , ['X', 'Y'] ].values.T
+            print('----', tidx, ' : \t', transcriptomes[tidx], ':\n')
+            tcoords = data.loc[invidx == tidx , ['X', 'Y', 'Z'] ].values.T
             coords = tcoords[:, ~nuclei[ tcoords[1], tcoords[0] ]]
             tlabs = label[coords[1], coords[0] ].astype(int)
             tpercell, _ = np.histogram(tlabs, np.arange(cellnum+2))
@@ -188,7 +196,7 @@ def main():
                     
             print('Saved file', filename,'\n')
             df = pd.DataFrame(coords.T)
-            df['foo'] = transcriptomes[tidx]
+            #df['foo'] = transcriptomes[tidx]
             df.to_csv(filename, header=False, index=False)
 
 if __name__ == '__main__':
