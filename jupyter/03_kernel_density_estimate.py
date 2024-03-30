@@ -4,6 +4,8 @@ import tifffile as tf
 from glob import glob
 import os
 from scipy import ndimage, stats
+import gudhi as gd
+import json
 
 from KDEpy import FFTKDE
 #from KDEpy.bw_selection import improved_sheather_jones as ISJ
@@ -12,7 +14,7 @@ import argparse
 pows2 = 2**np.arange(20) + 1
 bw = 10
 PP = 6
-stepsize = 5
+stepsize = 3
 pp = 0
 
 wsrc = '../cell_dams/'
@@ -98,6 +100,15 @@ def cell_grid_preparation(cell, ss, zmax, stepsize, pows2):
     
     return axes, grid, gmask, cgrid, cgridmask
         
+def cell_weighted_kde(coords, grid, weights, bw, gmask, stepsize, cgridmask, axes):
+
+    kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(coords, weights).evaluate(grid)
+    kde = kde[gmask]/(np.sum(kde[gmask])*stepsize*stepsize)
+    kde[ cgridmask ] = 0
+    kde = kde/(np.sum(kde)*stepsize*stepsize)
+    kde = kde.reshape( list(map(len, axes))[::-1], order='F')
+    
+    return kde
     
 def main():
     
@@ -111,22 +122,20 @@ def main():
     cstart = args.cstart
     cfinish = args.cfinish
     
-    dst = '../kde/'
-    dst = dst + sample + os.sep
+    ksrc = '../kde/'
+    dst = '../sublevel/'
+    
+    ksrc += sample + os.sep
+    dst += sample + os.sep
+    
     if not os.path.isdir(dst):
         os.mkdir(dst)
-
+    
     # # Load all general data
-
-    wall = tf.imread(wsrc + sample + '_dams.tif').astype(bool)
-    label, cellnum = ndimage.label(wall, ndimage.generate_binary_structure(2,1))
-
-    wall[tf.imread(nsrc + sample + '_EDT.tif') < 2] = False
-    print('Detected',cellnum,'cells')
-
-    metacell = pd.read_csv(dst + sample + '_cells_metadata.csv')
-    metatrans = pd.read_csv(dst + sample + '_transcripts_metadata.csv')
-    transcell = pd.read_csv(dst + sample + '_transcells_metadata.csv')
+    
+    metacell = pd.read_csv(ksrc + sample + '_cells_metadata.csv')
+    metatrans = pd.read_csv(ksrc + sample + '_transcripts_metadata.csv')
+    transcell = pd.read_csv(ksrc + sample + '_transcells_metadata.csv')
     tcumsum = np.hstack(([0], np.cumsum(metatrans['cyto_number'].values)))
 
     transcriptomes = list(metatrans['gene'])
@@ -136,10 +145,21 @@ def main():
         translocs[i] = pd.read_csv(filename, header=None, names=['X', 'Y', 'Z'])
     tlocs = pd.concat(translocs)
     zmax = np.max(tlocs['Z']+stepsize)
+    
+    for i in range(len(transcriptomes)):
+        tdst = dst + transcriptomes[i]
+        if not os.path.isdir(tdst):
+            os.mkdir(tdst)
 
+    wall = tf.imread(wsrc + sample + '_dams.tif').astype(bool)
+    label, cellnum = ndimage.label(wall, ndimage.generate_binary_structure(2,1))
+
+    wall[tf.imread(nsrc + sample + '_EDT.tif') < 2] = False
+    print('Detected',cellnum,'cells')
+    
     # # Compute weights
     
-    filename = dst + sample + '_border_weights.npy'
+    filename = ksrc + sample + '_border_weights.npy'
     if not os.path.isfile(filename):
         top, right, bottom, left = cardinal_distance_transform(wall)
 
@@ -149,48 +169,51 @@ def main():
         wh-= stats.norm.cdf(-left[tlocs['Y'].values, tlocs['X'].values]-pp, loc=0, scale=bw)
         
         weight = 2-(wv*wh)
-        np.save(dst + sample + '_border_weights.npy', weight)
+        np.save(filename, weight, allow_pickle=True)
 
     weight = np.load(filename, allow_pickle=True)
 
     # # Select a transcript and a cell
 
     for cidx in range(cstart,cfinish):
+        filename = '{}maxkde_p{}_s{}_bw{}_c{:06d}.csv'.format(ksrc,PP,stepsize,bw,cidx)
         
-        cell, ss = cell_img_preparation(cidx, wall, label, metacell, PP = 6)
-        axes, grid, gmask, cgrid, cgridmask = cell_grid_preparation(cell, ss, zmax, stepsize, pows2)
-        
-        # # Prepare the KDE grid
-
-        for tidx in np.nonzero(transcell.iloc[:, cidx].values > 5)[0]:
+        if not os.path.isfile(filename):
+            maxkde = np.zeros(len(transcriptomes)) - 1
+            cell, ss = cell_img_preparation(cidx, wall, label, metacell, PP = 6)
+            axes, grid, gmask, cgrid, cgridmask = cell_grid_preparation(cell, ss, zmax, stepsize, pows2)
+            print('Cell {}: ( {} , {} , {} )'.format(cidx, *list(map(len, axes))[::-1]))
             
-            kdst = dst + transcriptomes[tidx] + os.sep
-            if not os.path.isdir(kdst):
-                os.mkdir(kdst)
-            if not os.path.isfile(filename):
-                tmask = invidx == tidx
-            
-                coords = translocs.loc[ tmask , ['X', 'Y'] ].values.T
+            # # Prepare the KDE grid
+            tvals = np.nonzero(transcell.iloc[:, cidx].values > 0)[0]
+            tcounter = 1
+            for tidx in tvals:
+                
+                tdst = dst + transcriptomes[tidx] + os.sep
+                print('Transcript {:05d} --\t-- {}/{}'.format(tidx, tcounter, len(tvals)))
+                
+                coords = translocs[tidx].values.T
                 cmask = label[ coords[1], coords[0] ] == cidx + 1
                 ccoords = coords[:, cmask ].copy()
                 
-                w = weight[tmask][cmask]
-                kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(ccoords.T, w).evaluate(grid)
-                kde = kde[gridmask]/(np.sum(kde[gridmask])*stepsize*stepsize)
-                kde[ cgridmask ] = 0
-                kde = kde/(np.sum(kde)*stepsize*stepsize)
-                kde = kde.reshape( ( len(yaxis), len(xaxis) ), order='F')
-                maxkde = np.max(kde)
+                w = weight[tcumsum[tidx]:tcumsum[tidx+1]][cmask]
+                kde = cell_weighted_kde(ccoords.T, grid, w, bw, gmask, stepsize, cgridmask, axes)
+                maxkde[tidx] = np.max(kde)
                 
-                #ratio = ccoords.shape[1]/coords.shape[1]
+                filename = '{}{}_-_sublevel_p{}_s{}_bw{}_c{:06d}.json'.format(tdst,transcriptomes[tidx],PP,stepsize,bw,cidx)
+                if not os.path.isfile(filename):                    
+                                
+                    cc = gd.CubicalComplex(top_dimensional_cells = kde)
+                    pers = cc.persistence(homology_coeff_field=2, min_persistence=1e-15)
+                    print(filename)
+                    with open(filename, 'w') as f:
+                        json.dump(pers,f)
                 
-                # # Save results
+                tcounter += 1
+            
+            filename = '{}maxkde_p{}_s{}_bw{}_c{:06d}.csv'.format(ksrc,PP,stepsize,bw,cidx)
+            print(filename)
+            pd.DataFrame(maxkde.reshape(1,-1)).to_csv(filename, index=False, header=False)
                 
-                
-                meta = [cidx, PP, stepsize, bw, maxkde]
-                filename = kdst + 'c{}_p{}_s{}_b{}_m{:.25E}.npy'.format(*meta)
-                np.save(filename, kde)
-                print('Generated', filename)
-                    
 if __name__ == '__main__':
     main()
