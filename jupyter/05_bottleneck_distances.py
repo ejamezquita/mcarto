@@ -45,15 +45,19 @@ def main():
     
     parser = argparse.ArgumentParser(description='Extract a color matrix from a plate')
     parser.add_argument('sample', metavar='raw_dir', type=str, help='directory where raw images are located')
+    parser.add_argument('level', metavar='raw_dir', type=str, help='directory where raw images are located')
+    parser.add_argument('normtype', metavar='raw_dir', type=str, help='directory where raw images are located')
     parser.add_argument('cstart', metavar='raw_dir', type=int, help='directory where raw images are located')
     parser.add_argument('cfinish', metavar='raw_dir', type=int, help='directory where raw images are located')
     args = parser.parse_args()
 
     sample = args.sample
+    level = args.level
     initrow = args.cstart
     endrow = args.cfinish
+    normtype = args.normtype
 
-    gsrc = '../sublevel/'
+    gsrc = '../{}level/'.format(level)
     ksrc = '../kde/'
     
     ksrc += sample + os.sep
@@ -67,7 +71,7 @@ def main():
     TT = ['GLYMA_05G092200','GLYMA_17G195900']
     tidxs = np.array([np.argwhere(transcriptomes == TT[i])[0][0] for i in range(len(TT))])
 
-    dst = '../distance/{}/{}_vs_{}_trans/'.format(sample, *transcriptomes[tidxs])
+    dst = '../distance/{}/{}_vs_{}_{}/'.format(sample, *transcriptomes[tidxs], normtype)
     if not os.path.isdir(dst):
         os.mkdir(dst)
 
@@ -82,14 +86,18 @@ def main():
         metafocus[i,1:] = foo.values
 
     transfocus = transcell.loc[tidxs, metacell.loc[metafocus[:,0].astype(int), 'ndimage_cellID'].values.astype(str)]
-    #ratios = (transfocus/np.sum(transfocus.values)).values
-    ratios = transfocus.values/np.sum(transfocus.values, axis=1).reshape(-1,1)
+    if   normtype == 'both':
+        ratios = transfocus.values/np.sum(transfocus.values, axis=None)
+    elif normtype == 'cell':
+        ratios = transfocus.values/np.sum(transfocus.values, axis=0)
+    elif normtype == 'gene':
+        ratios = transfocus.values/np.sum(transfocus.values, axis=1).reshape(-1,1)
     jsonfiles = [ [ None for j in range(ratios.shape[1]) ] for i in range(ratios.shape[0]) ]
 
     for i in range(len(jsonfiles)):
-        foo = '{}{}/{}_-_sublevel_p{}_s{}_bw{}_c{:06d}.json'
+        foo = '{}{}/{}_-_{}level_p{}_s{}_bw{}_c{:06d}.json'
         for j in range(len(metafocus)):
-            filename = foo.format(gsrc, transcriptomes[tidxs[i]],transcriptomes[tidxs[i]],PP,stepsize,bw,int(metafocus[j,0]))
+            filename = foo.format(gsrc, transcriptomes[tidxs[i]],transcriptomes[tidxs[i]],level,PP,stepsize,bw,int(metafocus[j,0]))
             if os.path.isfile(filename):
                 jsonfiles[i][j] = filename
 
@@ -99,7 +107,7 @@ def main():
         orig_diags[i] = get_diagrams(jsonfiles[i], ndims, remove_inf=True)
         print(i, len(orig_diags), len(orig_diags[i]), len(orig_diags[i][0]), sep='\t')
 
-    maxx = 0
+    maxk = np.zeros(ndims)
     maxlife = np.zeros((len(orig_diags), len(orig_diags[0]), len(orig_diags[0][0])))
 
     for i in range(len(orig_diags)):
@@ -108,9 +116,10 @@ def main():
                 orig_diags[i][j][k] *= ratios[i][j]
                 if len(orig_diags[i][j][k]) > 0:
                     maxlife[i,j,k] = orig_diags[i][j][k][0,1] - orig_diags[i][j][k][0,0]
-            if maxx < np.max(orig_diags[i][j][-1]):
-                maxx = np.max(orig_diags[i][j][-1])
-
+                    if maxk[k] < np.max(orig_diags[i][j][k]):
+                        maxk[k] = np.max(orig_diags[i][j][k])
+    
+    maxx = np.max(maxk)
     rescale = 256/maxx
     maxlife *= rescale
     argmaxlife = np.argmax(maxlife, axis=-1)
@@ -126,7 +135,7 @@ def main():
              
             k = argmaxlife[i,j]
             if (len(diags[i][j][k]) == 0) & (len(orig_diags[i][j][k]) > 0):
-                diags[i][j][k] = rescale*np.atleast_2d(diags[i][j][k][0])
+                diags[i][j][k] = rescale*np.atleast_2d(orig_diags[i][j][k][0])
                 numpairs += 1
                 reduced +=1
                 
@@ -141,7 +150,9 @@ def main():
             for k in range(len(diags[i][j])):
                 diagh[counter][k] = diags[i][j][k]
             counter += 1
-
+    
+    endrow = np.min([endrow, len(diagh)])
+    
     bottleneck = np.zeros((endrow - initrow, len(diagh)))
     
     ix = 0
@@ -156,7 +167,7 @@ def main():
         ix += 1
         print('Row {} [{}]'.format(i, ix))
 
-    filename = dst + dst.split(os.sep)[-2] + '_bottleneck_{:05d}_{:05d}.csv'.format(initrow, endrow)
+    filename = dst + dst.split(os.sep)[-2] + '_{}level_bottleneck_{:05d}_{:05d}.csv'.format(level, initrow, endrow)
     pd.DataFrame(bottleneck).to_csv(filename, index=False, header=None)
 
 if __name__ == '__main__':

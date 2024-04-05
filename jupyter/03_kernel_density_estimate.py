@@ -16,6 +16,7 @@ bw = 10
 PP = 6
 stepsize = 3
 pp = 0
+ndims = 3
 
 wsrc = '../cell_dams/'
 nsrc = '../nuclear_mask/'
@@ -103,9 +104,9 @@ def cell_grid_preparation(cell, ss, zmax, stepsize, pows2):
 def cell_weighted_kde(coords, grid, weights, bw, gmask, stepsize, cgridmask, axes):
 
     kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(coords, weights).evaluate(grid)
-    kde = kde[gmask]/(np.sum(kde[gmask])*stepsize*stepsize)
+    kde = kde[gmask]/( np.sum(kde[gmask]) * (stepsize**len(coords)) )
     kde[ cgridmask ] = 0
-    kde = kde/(np.sum(kde)*stepsize*stepsize)
+    kde = kde/( np.sum(kde) * (stepsize**len(coords)) )
     kde = kde.reshape( list(map(len, axes))[::-1], order='F')
     
     return kde
@@ -123,7 +124,7 @@ def main():
     cfinish = args.cfinish
     
     ksrc = '../kde/'
-    dst = '../sublevel/'
+    dst = '../suplevel/'
     
     ksrc += sample + os.sep
     dst += sample + os.sep
@@ -137,6 +138,8 @@ def main():
     metatrans = pd.read_csv(ksrc + sample + '_transcripts_metadata.csv')
     transcell = pd.read_csv(ksrc + sample + '_transcells_metadata.csv')
     tcumsum = np.hstack(([0], np.cumsum(metatrans['cyto_number'].values)))
+    
+    cfinish = np.min([cfinish, len(metacell)])
 
     transcriptomes = list(metatrans['gene'])
     translocs = [None for i in range(len(transcriptomes))]
@@ -174,22 +177,29 @@ def main():
     weight = np.load(filename, allow_pickle=True)
 
     # # Select a transcript and a cell
+    
+    tidxs = np.arange(10)
 
     for cidx in range(cstart,cfinish):
-        filename = '{}maxkde_p{}_s{}_bw{}_c{:06d}.csv'.format(ksrc,PP,stepsize,bw,cidx)
+        #filename = '{}maxkde_p{}_s{}_bw{}_c{:06d}.csv'.format(ksrc,PP,stepsize,bw,cidx)
         
-        if not os.path.isfile(filename):
-            maxkde = np.zeros(len(transcriptomes)) - 1
-            cell, ss = cell_img_preparation(cidx, wall, label, metacell, PP = 6)
-            axes, grid, gmask, cgrid, cgridmask = cell_grid_preparation(cell, ss, zmax, stepsize, pows2)
-            print('Cell {}: ( {} , {} , {} )'.format(cidx, *list(map(len, axes))[::-1]))
+        #if not os.path.isfile(filename):
+        maxkde = np.zeros(len(transcriptomes)) - 1
+        cell, ss = cell_img_preparation(cidx, wall, label, metacell, PP = 6)
+        axes, grid, gmask, cgrid, cgridmask = cell_grid_preparation(cell, ss, zmax, stepsize, pows2)
+        print('Cell {}: ( {} , {} , {} )'.format(cidx, *list(map(len, axes))[::-1]))
+        
+        # # Prepare the KDE grid
+        tvals = np.nonzero(transcell.iloc[tidxs, cidx].values > 0)[0]
+        tcounter = 1
+        for tidx in tvals:
             
-            # # Prepare the KDE grid
-            tvals = np.nonzero(transcell.iloc[:, cidx].values > 0)[0]
-            tcounter = 1
-            for tidx in tvals:
-                
-                tdst = dst + transcriptomes[tidx] + os.sep
+            tidx = tidxs[tidx]
+            tdst = dst + transcriptomes[tidx] + os.sep
+            filename = '{}{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(tdst, transcriptomes[tidx], dst.split('/')[1], PP,stepsize,bw,cidx)
+            
+            if not os.path.isfile(filename):
+            
                 print('Transcript {:05d} --\t-- {}/{}'.format(tidx, tcounter, len(tvals)))
                 
                 coords = translocs[tidx].values.T
@@ -200,20 +210,20 @@ def main():
                 kde = cell_weighted_kde(ccoords.T, grid, w, bw, gmask, stepsize, cgridmask, axes)
                 maxkde[tidx] = np.max(kde)
                 
-                filename = '{}{}_-_sublevel_p{}_s{}_bw{}_c{:06d}.json'.format(tdst,transcriptomes[tidx],PP,stepsize,bw,cidx)
-                if not os.path.isfile(filename):                    
+                #filename = '{}{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(tdst, transcriptomes[tidx], dst.split('/')[1], PP,stepsize,bw,cidx)
+                #if not os.path.isfile(filename):                    
                                 
-                    cc = gd.CubicalComplex(top_dimensional_cells = kde)
-                    pers = cc.persistence(homology_coeff_field=2, min_persistence=1e-15)
-                    print(filename)
-                    with open(filename, 'w') as f:
-                        json.dump(pers,f)
+                cc = gd.CubicalComplex(top_dimensional_cells = np.max(kde) - kde)
+                pers = cc.persistence(homology_coeff_field=2, min_persistence=1e-15)
+                print(filename)
+                with open(filename, 'w') as f:
+                    json.dump(pers,f)
                 
                 tcounter += 1
-            
-            filename = '{}maxkde_p{}_s{}_bw{}_c{:06d}.csv'.format(ksrc,PP,stepsize,bw,cidx)
-            print(filename)
-            pd.DataFrame(maxkde.reshape(1,-1)).to_csv(filename, index=False, header=False)
+        
+            #filename = '{}maxkde_p{}_s{}_bw{}_c{:06d}.csv'.format(ksrc,PP,stepsize,bw,cidx)
+            #print(filename)
+            #pd.DataFrame(maxkde.reshape(1,-1)).to_csv(filename, index=False, header=False)
                 
 if __name__ == '__main__':
     main()
