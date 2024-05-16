@@ -5,8 +5,13 @@ import tifffile as tf
 from glob import glob
 import os
 
-from scipy import ndimage, interpolate, spatial, stats
+from scipy import ndimage, spatial, stats
 from sklearn import neighbors
+
+from KDEpy import FFTKDE
+import gudhi as gd
+import json
+import persim
 
 # ======================================================================
 # PART I
@@ -115,7 +120,7 @@ def correct_shifted_transcripts(cdtlabs, cdtmask, cdtcoords, edtmask, edtvals, l
     return len(indexing), cdtlabs, cdtcoords
     
 # ======================================================================
-# PART I
+# PART II
 # ======================================================================
 
     
@@ -164,7 +169,7 @@ def generate_transcell_metadata(translocs, transcriptomes, cellnum, label):
     return meta
 
 # ======================================================================
-# PART II
+# PART III
 # ======================================================================
 
 def kde_grid_generator(stepsize, maxdims, pows2 = 2**np.arange(20) + 1, pad=1.5):
@@ -219,3 +224,45 @@ def cell_weighted_kde(coords, grid, weights, bw, gmask, stepsize, cgridmask, axe
     
     return kde
     
+def get_level_filtration(arr, level):
+    if level == 'sub':
+        return arr
+    elif level == 'sup':
+        return np.max(arr) - arr
+    else:
+        print('ERROR: `level` can only be `sub` or `sup` at the moment')
+    return 0
+        
+# ======================================================================
+# PART IV
+# ======================================================================
+
+def pers2numpy(pers):
+    bd = np.zeros((len(pers), 3), dtype=float)
+    for i in range(len(bd)):
+        bd[i, 0] = pers[i][0]
+        bd[i, 1:] = pers[i][1]
+    return bd
+
+def get_diagrams(jsonfiles, ndims, remove_inf = False):
+    # diag[j-th cell][k-th dimension]
+    
+    diags = [ [np.empty((0,2)) for k in range(ndims)] for j in range(len(jsonfiles))]
+
+    for j in range(len(jsonfiles)):
+        
+        if jsonfiles[j] is not None:
+            with open(jsonfiles[j]) as f:
+                diag = [tuple(x) for x in json.load(f)]
+            diag = pers2numpy(diag)
+        
+            for k in range(ndims):
+                diags[j][k] = diag[diag[:,0] == k, 1:]
+    
+    if remove_inf:
+        for j in range(len(diags)):
+            for k in range(ndims):
+                diags[j][k]  = np.atleast_2d(diags[j][k][np.all(diags[j][k] < np.inf, axis=1), :].squeeze())
+                
+
+    return diags

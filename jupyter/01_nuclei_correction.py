@@ -122,6 +122,8 @@ def main():
                 print('Saved file', filename,'\n')
                 df = pd.DataFrame(coords.T)
                 df.to_csv(filename, header=False, index=False)
+                
+    return 0
 
 if __name__ == '__main__':
     main()

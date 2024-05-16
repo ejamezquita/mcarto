@@ -69,10 +69,8 @@ def main():
         meta = meta.join(pd.DataFrame(np.round(np.flip(cnuclei, axis=1),2), columns=['ndimage_comX', 'ndimage_comY']))
         meta['orig_cellID'] = celllocs['Cell.ID..'].values[cmatches]
         meta['ndimage_cellID'] = np.arange(1,cellnum+1)
-        meta.to_csv(filename, index=False)
+        meta.set_index(keys=['ndimage_cellID']).to_csv(filename, index_label='ndimage_cellID')
         print('Created:\t', filename)
-
-    metacell = pd.read_csv(filename)
 
     filename = dst + sample + '_transcripts_metadata.csv'
     if rewrite or (not os.path.isfile(filename)):
@@ -87,16 +85,13 @@ def main():
         meta.to_csv(filename, index=False)
         print('Created:\t', filename)
 
-    metatrans = pd.read_csv(filename)
-
     filename = dst + sample + '_transcells_metadata.csv'
     if rewrite or (not os.path.isfile(filename)):
         meta = utils.generate_transcell_metadata(translocs, transcriptomes, cellnum, label)
         meta.to_csv(filename, index=False)
         print('Created:\t', filename)
         
-    transcell = pd.read_csv(filename)
-    
+    return 0
     
 if __name__ == '__main__':
     main()

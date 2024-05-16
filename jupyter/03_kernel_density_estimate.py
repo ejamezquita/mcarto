@@ -8,7 +8,6 @@ import gudhi as gd
 import json
 
 from KDEpy import FFTKDE
-#from KDEpy.bw_selection import improved_sheather_jones as ISJ
 import argparse
 
 pows2 = 2**np.arange(20) + 1
