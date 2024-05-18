@@ -26,7 +26,7 @@ def main():
                         help="Consider for correction only those transcripts with at least this number of nearest neighbors")
     parser.add_argument("-p", "--minimum_ratio", type=int, default=74,
                         help="New label considered if at least p percent of neighbors belong to other cell")
-    parser.add_argument("-n", "--nuclei_mask_cutoff", type=int, default=2,
+    parser.add_argument("-n", "--nuclei_mask_cutoff", type=int, default=1,
                         help="Consider a transcript as part of the nucleus if it is within this distance from one")
     parser.add_argument("--cell_wall_directory", type=str, default="cell_dams",
                         help="directory containing cell wall TIFs")
@@ -67,10 +67,10 @@ def main():
     filename = csrc + sample + '_data' + os.sep + '32771-slide1_' + sample + '_results.txt'
     data = pd.read_csv(filename, header=None, sep='\t').drop(columns=[4])
     foo = len(data)
-    print('Originally found', foo, 'total transcripts')
+    print('Originally found', len(data), 'total transcripts')
     data.columns = ['X', 'Y', 'Z', 'T']
     data = data.loc[ ~nuclei[data['Y'], data['X']] ]
-    print('Reduced to', foo, 'after removing those in nuclei [kept {:.02f}% of the originals]'.format(len(data)/foo*100) )
+    print('Reduced to', len(data), 'after removing those in nuclei [kept {:.02f}% of the originals]'.format(len(data)/foo*100) )
 
     transcriptomes, invidx, tsize = np.unique(data.iloc[:,-1], return_index = False, return_inverse=True, return_counts=True) 
     print(len(transcriptomes), 'transcriptomes')

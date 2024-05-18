@@ -14,6 +14,58 @@ import json
 import persim
 
 # ======================================================================
+# PART 0
+# ======================================================================
+
+def is_type_tryexcept(s, testtype=int):
+    """ Returns True if string is a number. """
+    try:
+        testtype(s)
+        return True
+    except ValueError:
+        return False
+
+def get_range_cell_values(arginput, meta, startval=0):
+    
+    if arginput is None:
+        Vals = meta.index.values[startval:]
+    elif is_type_tryexcept(arginput, int):
+        Vals = [int(arginput)]
+    elif os.path.isfile(arginput):
+        focus = pd.read_csv(arginput)
+        if 'ndimage_ID' in focus.columns:
+            Vals = focus['ndimage_ID'].values
+        else:
+            Vals = np.zeros(len(focus), dtype=int)
+            for i in range(len(cid)):
+                Vals[i] = meta[meta['orig_cellID'] == focus.iloc[i,0]].index[0]
+    else:
+        Vals = None
+        print('ERROR: Unable to choose cell ID values from input')
+        
+    return Vals
+    
+def get_range_gene_values(arginput, meta, startval=0):
+    
+    if arginput is None:
+        Vals = range(startval, len(meta), 1)
+    elif is_type_tryexcept(arginput, int):
+        Vals = [int(arginput)]
+    elif os.path.isfile(arginput):
+        focus = pd.read_csv(arginput)
+        if 'gene_ID' in focus.columns:
+            Vals = focus['gene_ID'].values
+        else:
+            Vals = np.zeros(len(focus), dtype=int)
+            for i in range(len(cid)):
+                Vals[i] = np.nonzero(meta == focus.iloc[i,0])[0][0]
+    else:
+        Vals = None
+        print('ERROR: Unable to choose gene ID values from input')
+        
+    return Vals
+
+# ======================================================================
 # PART I
 # ======================================================================
 
@@ -234,7 +286,7 @@ def get_level_filtration(arr, level):
     return 0
         
 # ======================================================================
-# PART IV
+# PART V
 # ======================================================================
 
 def pers2numpy(pers):
@@ -266,3 +318,15 @@ def get_diagrams(jsonfiles, ndims, remove_inf = False):
                 
 
     return diags
+
+def normalize_counts(transfocus, normtype):
+    if   normtype == 'both':
+        ratios = transfocus.values/np.sum(transfocus.values, axis=None)
+    elif normtype == 'cell':
+        ratios = transfocus.values/np.sum(transfocus.values, axis=0)
+    elif normtype == 'gene':
+        ratios = transfocus.values/np.sum(transfocus.values, axis=1).reshape(-1,1)
+    else:
+        print('Invalid normtype\nReceived', normtype,'\nExpected one of `both`, `cell`, or `gene`', sep='')
+        ratios = None
+    return ratios

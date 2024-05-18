@@ -14,6 +14,8 @@ def main():
                                      epilog='Last major update: May 2024. © Erik Amezquita')
     parser.add_argument("sample", type=str,
                         help="Cross-section sample name")
+    parser.add_argument("-n", "--nuclei_mask_cutoff", type=int, default=1,
+                        help="Consider a transcript as part of the nucleus if it is within this distance from one")
     parser.add_argument("--cell_wall_directory", type=str, default="cell_dams",
                         help="directory containing cell wall TIFs")
     parser.add_argument("--nuclear_directory", type=str, default="nuclear_mask",
@@ -44,7 +46,7 @@ def main():
     # # Load all general data
 
     wall = tf.imread(wsrc + sample + '_dams.tif').astype(bool)
-    nuclei = tf.imread(nsrc + sample + '_EDT.tif') < 2
+    nuclei = tf.imread(nsrc + sample + '_EDT.tif') < args.nuclei_mask_cutoff
     
     label, cellnum = ndimage.label(wall, ndimage.generate_binary_structure(2,1))
 
