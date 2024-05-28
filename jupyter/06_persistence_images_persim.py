@@ -189,7 +189,7 @@ def main():
     nzmask = [None for i in range(len(diags)) ]
 
     for i in range(len(diags)):
-        nzmask[i] = np.nonzero( np.array(list(map(len, diags[i]))) > 1  )[0]
+        nzmask[i] = np.nonzero( np.array(list(map(len, diags[i]))) > 0 )[0]
         nonzerodiags[i+1] += len(nzmask[i])
         diags[i] = [ diags[i][j] for j in nzmask[i] ]
 

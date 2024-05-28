@@ -372,7 +372,7 @@ def normalize_persistence_diagrams(orig_diags, ratios, norm_type, SCALE=256):
     
     return orig_diags, rescale, focus_dim
     
-def reduce_num_of_diagrams(orig_diags, rescale, focus_dim, norm_type, minlife=1):
+def reduce_num_of_diagrams(orig_diags, rescale, focus_dim, norm_type, minlife=1, keepall=False):
     
     num_diags = len(orig_diags)*len(orig_diags[0])
     if norm_type == 'gene':
@@ -383,15 +383,20 @@ def reduce_num_of_diagrams(orig_diags, rescale, focus_dim, norm_type, minlife=1)
     for i in range(len(diags)):
         for j in range(len(diags[i])):
             diags[i][j] = np.atleast_2d(diags[i][j][ diags[i][j][:,1] - diags[i][j][:,0] > minlife, : ])
-
-    nonzerodiags = np.zeros(1 + len(diags), dtype=int)
+    
+    nonzerodiags = np.zeros(1+len(diags), dtype=int)
     nzmask = [None for i in range(len(diags)) ]
-
-    for i in range(len(diags)):
-        nzmask[i] = np.nonzero( np.array(list(map(len, diags[i]))) > 1  )[0]
-        nonzerodiags[i+1] += len(nzmask[i])
-        diags[i] = [ diags[i][j] for j in nzmask[i] ]
-
+    
+    if not keepall:
+        for i in range(len(diags)):
+            nzmask[i] = np.nonzero( np.array(list(map(len, diags[i]))) > 0  )[0]
+            nonzerodiags[i+1] += len(nzmask[i])
+            diags[i] = [ diags[i][j] for j in nzmask[i] ]
+    else:
+        nonzerodiags[1:] = np.full(len(diags), len(diags[0]), dtype=int)
+        for i in range(len(diags)):
+            nzmask[i] = np.arange(len(diags[i]))
+        
     nzcumsum = np.cumsum(nonzerodiags)
     
     foo = nzcumsum[-1]/num_diags*100
