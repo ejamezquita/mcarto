@@ -6,7 +6,7 @@ import json
 
 from glob import glob
 import os
-from persim import PersistenceImager
+import persim
 
 import utils
 import umap
@@ -219,7 +219,7 @@ def main():
                  'kernel':'gaussian',
                  'kernel_params':{'sigma': [[sigma, 0.0], [0.0, sigma]]} }
                                
-    pimgr = PersistenceImager(**pi_params)
+    pimgr = persim.PersistenceImager(**pi_params)
     extent = [ pimgr.birth_range[0], pimgr.birth_range[1], pimgr.pers_range[0], pimgr.pers_range[1] ]
     img = np.asarray(pimgr.transform(lt_coll, skew=False, n_jobs=1))
 

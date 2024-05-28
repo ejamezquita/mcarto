@@ -25,7 +25,7 @@ def is_type_tryexcept(s, testtype=int):
     except ValueError:
         return False
 
-def get_range_cell_values(arginput, meta, startval=0):
+def get_range_cell_values(arginput=None, meta=None, startval=0):
     
     if arginput is None:
         Vals = meta.index.values[startval:]
@@ -45,7 +45,7 @@ def get_range_cell_values(arginput, meta, startval=0):
         
     return Vals
     
-def get_range_gene_values(arginput, meta, startval=0):
+def get_range_gene_values(arginput=None, meta=None, startval=0):
     
     if arginput is None:
         Vals = range(startval, len(meta), 1)
@@ -330,3 +330,88 @@ def normalize_counts(transfocus, normtype):
         print('Invalid normtype\nReceived', normtype,'\nExpected one of `both`, `cell`, or `gene`', sep='')
         ratios = None
     return ratios
+
+# ======================================================================
+# PART VI
+# ======================================================================
+
+def normalize_persistence_diagrams(orig_diags, ratios, norm_type, SCALE=256):
+    
+    numpairs = 0
+    num_diags = len(orig_diags)*len(orig_diags[0])
+    ndims = len(orig_diags[0][0])
+    genemaxk = np.zeros((len(orig_diags), ndims))
+    maxlife = np.zeros((len(orig_diags), len(orig_diags[0]), len(orig_diags[0][0])))
+
+    for i in range(len(orig_diags)):
+        for j in range(len(orig_diags[i])):
+            for k in range(len(orig_diags[i][j])):
+                orig_diags[i][j][k] *= ratios[i][j]
+                numpairs += len(orig_diags[i][j][k])
+                if len(orig_diags[i][j][k]) > 0:
+                    maxlife[i,j,k] = orig_diags[i][j][k][0,1] - orig_diags[i][j][k][0,0]
+                    if genemaxk[i,k] < np.max(orig_diags[i][j][k]):
+                        genemaxk[i,k] = np.max(orig_diags[i][j][k])
+
+    print('Initial number of life-birth pairs\t:', numpairs)
+    
+    if norm_type == 'gene':
+        maxx = np.max(genemaxk,axis=1).reshape(len(maxlife),1,1)
+    elif norm_type == 'both':
+        maxx = np.max(genemaxk) 
+
+    rescale = SCALE/maxx
+    maxlife *= rescale
+    argmaxlife = np.argmax(maxlife, axis=-1)
+    mhist, _ = np.histogram(argmaxlife.ravel(), bins=range(ndims+1))
+    focus_dim = np.argmax(mhist)
+    print('\nNo. of diagrams s.t. H_k had the most persistent component')
+    for i in range(len(mhist)):
+        print('H_{}:\t{} [ {:.1f}% ]'.format(i,mhist[i], 100*mhist[i]/num_diags) )
+    print('\nWill focus just on dimension k = {}\n'.format(focus_dim) )
+    
+    return orig_diags, rescale, focus_dim
+    
+def reduce_num_of_diagrams(orig_diags, rescale, focus_dim, norm_type, minlife=1):
+    
+    num_diags = len(orig_diags)*len(orig_diags[0])
+    if norm_type == 'gene':
+        diags = [ [ rescale[i][0][0]*orig_diags[i][j][focus_dim].copy() for j in range(len(orig_diags[i])) ] for i in range(len(orig_diags)) ]
+    elif norm_type == 'both':
+        diags = [ [ rescale*orig_diags[i][j][focus_dim].copy() for j in range(len(orig_diags[i])) ] for i in range(len(orig_diags)) ]
+
+    for i in range(len(diags)):
+        for j in range(len(diags[i])):
+            diags[i][j] = np.atleast_2d(diags[i][j][ diags[i][j][:,1] - diags[i][j][:,0] > minlife, : ])
+
+    nonzerodiags = np.zeros(1 + len(diags), dtype=int)
+    nzmask = [None for i in range(len(diags)) ]
+
+    for i in range(len(diags)):
+        nzmask[i] = np.nonzero( np.array(list(map(len, diags[i]))) > 1  )[0]
+        nonzerodiags[i+1] += len(nzmask[i])
+        diags[i] = [ diags[i][j] for j in nzmask[i] ]
+
+    nzcumsum = np.cumsum(nonzerodiags)
+    
+    foo = nzcumsum[-1]/num_diags*100
+    print('Non-zero diagrams:\t', nzcumsum[-1],'\nCompared to all diagrams:\t',num_diags,'\t[{:.2f}%]'.format(foo), sep='')
+    
+    return diags, nzcumsum, nzmask
+    
+def birthdeath_to_flattened_lifetime(diags, num_diags):
+    
+    lt_coll = [ None for _ in range(num_diags) ]
+
+    k = 0
+    maxbirth = 0
+    for i in range(len(diags)):
+        for j in range(len(diags[i])):
+            lt_coll[k] = np.column_stack( (diags[i][j][:, 0], diags[i][j][:, 1] - diags[i][j][:, 0]) )
+            foo = np.max(diags[i][j][:, 0])
+            if foo > maxbirth:
+                maxbirth = foo
+            k += 1
+
+    return lt_coll, maxbirth
+    
