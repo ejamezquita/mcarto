@@ -3,9 +3,8 @@ import pandas as pd
 import tifffile as tf
 from glob import glob
 import os
-from scipy import ndimage, interpolate, spatial, stats
+from scipy import ndimage, stats
 
-from KDEpy import FFTKDE
 import gudhi as gd
 import json
 
@@ -120,19 +119,9 @@ def main():
     # # Select a cell and then a gene
 
     for cidx in Cells:
-
-        ss = (np.s_[max([0, metacell.loc[cidx, 'y0'] - PP]) : min([wall.shape[0], metacell.loc[cidx, 'y1'] + PP])],
-              np.s_[max([1, metacell.loc[cidx, 'x0'] - PP]) : min([wall.shape[1], metacell.loc[cidx, 'x1'] + PP])])
-        cell = wall[ss].copy().astype(np.uint8)
-        cell[ label[ss] == cidx ] = 2
-        cell[~wall[ss]] = 0
-
-        maxdims = ( cell.shape[1], cell.shape[0], zmax)
-        axes, grid, gmask = utils.kde_grid_generator(stepsize=stepsize, maxdims=maxdims, pows2 = pows2, pad=1.5)
-        grid[:, :2] = grid[:, :2] + np.array([ss[1].start, ss[0].start])
-        cgrid = grid[gmask].copy()
-        cgrid[:,:2] = grid[gmask][:,:2] - np.array([ss[1].start, ss[0].start])
-        cgridmask = cell[cgrid[:,1],cgrid[:,0]] != 2
+        
+        cell, extent = utils.get_cell_img(cidx, metacell, wall, label, PP=PP, pxbar=False)
+        axes, grid, gmask, cgrid, cgridmask = utils.cell_grid_preparation(cell, extent, zmax, stepsize, pows2)
         
         for tidx in Genes:
 
@@ -149,15 +138,8 @@ def main():
                     # # Compute, crop, and correct the KDE
 
                     w = weight[tcumsum[tidx]:tcumsum[tidx+1]][cmask]
-                    wmax = np.max(w)
+                    kde = utils.cell_weighted_kde(ccoords, grid, w, bw, gmask, stepsize, cgridmask, axes)
 
-                    kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(ccoords.T, w).evaluate(grid)
-                    kde = kde[gmask]/(np.sum(kde[gmask])*(stepsize**len(coords)))
-
-                    kde[ cgridmask ] = 0
-                    kde = kde/(np.sum(kde)*(stepsize**len(coords)))
-                    kde = kde.reshape( list(map(len, axes))[::-1], order='F')
-                    
                     # # Cubical persistence
 
                     for level in Levels:
@@ -171,6 +153,6 @@ def main():
                                 json.dump(pers,f)
 
     return 0
-    
+
 if __name__ == '__main__':
     main()

@@ -43,7 +43,7 @@ def plot_embedding(nzcumsum, titles, embedding, alpha=0.05, label=None, nrows=2,
         ax[i].scatter(embedding[s_,0], embedding[s_,1], c=colors[i], marker=markers[i], alpha=0.5, zorder=2)
         ax[i].set_title(titles[i])
         ax[i].set_xlim(mn[0],mx[0])
-        ax[0].set_ylim(mn[1],mx[1])
+        ax[i].set_ylim(mn[1],mx[1])
         ax[i].tick_params(left=ticks, labelleft=ticks, labelbottom=ticks, bottom=ticks);
     
     for i in range( len(ax) - len(nzcumsum)+1 , 0, -1):
@@ -52,8 +52,6 @@ def plot_embedding(nzcumsum, titles, embedding, alpha=0.05, label=None, nrows=2,
     if label is not None:
         fig.supxlabel(label + ' 01')
         fig.supylabel(label + ' 02')
-    
-    fig.tight_layout();
 
     return fig, ax
 

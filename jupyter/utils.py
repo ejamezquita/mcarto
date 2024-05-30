@@ -9,13 +9,14 @@ from scipy import ndimage, spatial, stats
 from sklearn import neighbors
 
 from KDEpy import FFTKDE
-import gudhi as gd
 import json
-import persim
 
 # ======================================================================
 # PART 0
 # ======================================================================
+
+pxs = 75
+pxbar = np.s_[-15:-5, 5:5 + pxs]
 
 def is_type_tryexcept(s, testtype=int):
     """ Returns True if string is a number. """
@@ -65,6 +66,19 @@ def get_range_gene_values(arginput=None, meta=None, startval=0):
         
     return Vals
 
+def get_cell_img(cidx, metacell, wall, label, PP=10, pxbar=False):
+    s_ = (np.s_[max([0, metacell.loc[cidx, 'y0'] - PP]) : min([wall.shape[0], metacell.loc[cidx, 'y1'] + PP])],
+          np.s_[max([1, metacell.loc[cidx, 'x0'] - PP]) : min([wall.shape[1], metacell.loc[cidx, 'x1'] + PP])])
+    extent = (s_[1].start, s_[1].stop, s_[0].start, s_[0].stop)
+    cell = wall[s_].copy().astype(np.uint8)
+    cell[ label[s_] == cidx ] = 2
+    cell[~wall[s_]] = 0
+    
+    if pxbar:
+        cell[pxbar] = 0
+
+    return cell, extent
+    
 # ======================================================================
 # PART I
 # ======================================================================
@@ -244,24 +258,14 @@ def kde_grid_generator(stepsize, maxdims, pows2 = 2**np.arange(20) + 1, pad=1.5)
 
     return axes, grid, mask
 
-    
-def cell_img_preparation(cidx, wall, label, metacell, PP = 6):
-    ss = (np.s_[max([0, metacell.loc[cidx, 'y0'] - PP]) : min([wall.shape[0], metacell.loc[cidx, 'y1'] + PP])],
-          np.s_[max([1, metacell.loc[cidx, 'x0'] - PP]) : min([wall.shape[1], metacell.loc[cidx, 'x1'] + PP])])
-    cell = wall[ss].copy().astype(np.uint8)
-    cell[ label[ss] == cidx+1 ] = 2
-    cell[~wall[ss]] = 0
-    
-    return cell, ss
-    
-def cell_grid_preparation(cell, ss, zmax, stepsize, pows2):
+def cell_grid_preparation(cell, extent, zmax, stepsize, pows2):
     
     maxdims = ( cell.shape[1], cell.shape[0], zmax )
     axes, grid, gmask = kde_grid_generator(stepsize=stepsize, maxdims=maxdims, pows2 = pows2, pad=1.5)
-    grid[:, :2] = grid[:, :2] + np.array([ss[1].start, ss[0].start])
+    grid[:, :2] = grid[:, :2] + np.array([ extent[0], extent[2] ])
     
     cgrid = grid[gmask].copy()
-    cgrid[:,:2] = grid[gmask][:,:2] - np.array([ss[1].start, ss[0].start])
+    cgrid[:,:2] = grid[gmask][:,:2] - np.array([ extent[0], extent[2] ])
     cgridmask = cell[cgrid[:,1],cgrid[:,0]] != 2
     
     return axes, grid, gmask, cgrid, cgridmask
@@ -419,4 +423,23 @@ def birthdeath_to_flattened_lifetime(diags, num_diags):
             k += 1
 
     return lt_coll, maxbirth
+    
+def get_diagram_match_coordinates(dgm1, dgm2, dm):
+    xy = []
+    for m in dm:
+        x1,y1 = dgm1[m[0]]
+        x2,y2 = dgm2[m[1]]
+        xy.append([x1,y1,x2,y2])
+    for j in np.setdiff1d(range(len(dgm1)), np.array(dm)[:,0]):
+        mid = np.mean(dgm1[j])
+        x1,y1 = dgm1[j]
+        x2,y2 = mid,mid
+        xy.append([x1,y1,x2,y2])
+    for j in np.setdiff1d(range(len(dgm2)), np.array(dm)[:,1]):
+        mid = np.mean(dgm2[j])
+        x1,y1 = dgm2[j]
+        x2,y2 = mid,mid
+        xy.append([x1,y1,x2,y2])
+    
+    return np.array(xy)
     
