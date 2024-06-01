@@ -238,7 +238,9 @@ def generate_transcell_metadata(translocs, transcriptomes, cellnum, label):
 # PART III
 # ======================================================================
 
-def kde_grid_generator(stepsize, maxdims, pows2 = 2**np.arange(20) + 1, pad=1.5):
+pows2 = 2**np.arange(20) + 1
+
+def kde_grid_generator(stepsize, maxdims, pows2 = pows2, pad=1.5):
     axes = [ np.arange(0, maxdims[i], stepsize) for i in range(len(maxdims)) ]
     AXES = [ None for i in range(len(axes)) ]
     
@@ -258,7 +260,7 @@ def kde_grid_generator(stepsize, maxdims, pows2 = 2**np.arange(20) + 1, pad=1.5)
 
     return axes, grid, mask
 
-def cell_grid_preparation(cell, extent, zmax, stepsize, pows2):
+def cell_grid_preparation(cell, extent, zmax, stepsize, pows2=pows2):
     
     maxdims = ( cell.shape[1], cell.shape[0], zmax )
     axes, grid, gmask = kde_grid_generator(stepsize=stepsize, maxdims=maxdims, pows2 = pows2, pad=1.5)
@@ -430,16 +432,30 @@ def get_diagram_match_coordinates(dgm1, dgm2, dm):
         x1,y1 = dgm1[m[0]]
         x2,y2 = dgm2[m[1]]
         xy.append([x1,y1,x2,y2])
-    for j in np.setdiff1d(range(len(dgm1)), np.array(dm)[:,0]):
-        mid = np.mean(dgm1[j])
-        x1,y1 = dgm1[j]
-        x2,y2 = mid,mid
-        xy.append([x1,y1,x2,y2])
-    for j in np.setdiff1d(range(len(dgm2)), np.array(dm)[:,1]):
-        mid = np.mean(dgm2[j])
-        x1,y1 = dgm2[j]
-        x2,y2 = mid,mid
-        xy.append([x1,y1,x2,y2])
+    
+    dm = np.atleast_2d(dm)
+    if dm.shape[1] > 0:
+        for j in np.setdiff1d(range(len(dgm1)), dm[:,0]):
+            mid = np.mean(dgm1[j])
+            x1,y1 = dgm1[j]
+            x2,y2 = mid,mid
+            xy.append([x1,y1,x2,y2])
+        for j in np.setdiff1d(range(len(dgm2)), dm[:,1]):
+            mid = np.mean(dgm2[j])
+            x1,y1 = dgm2[j]
+            x2,y2 = mid,mid
+            xy.append([x1,y1,x2,y2])
+    else:
+        for j in range(len(dgm1)):
+            mid = np.mean(dgm1[j])
+            x1,y1 = dgm1[j]
+            x2,y2 = mid,mid
+            xy.append([x1,y1,x2,y2])
+        for j in range(len(dgm2)):
+            mid = np.mean(dgm2[j])
+            x1,y1 = dgm2[j]
+            x2,y2 = mid,mid
+            xy.append([x1,y1,x2,y2])
     
     return np.array(xy)
     

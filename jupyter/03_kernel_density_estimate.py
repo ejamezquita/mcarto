@@ -138,7 +138,7 @@ def main():
                     # # Compute, crop, and correct the KDE
 
                     w = weight[tcumsum[tidx]:tcumsum[tidx+1]][cmask]
-                    kde = utils.cell_weighted_kde(ccoords, grid, w, bw, gmask, stepsize, cgridmask, axes)
+                    kde = utils.cell_weighted_kde(ccoords.T, grid, w, bw, gmask, stepsize, cgridmask, axes)
 
                     # # Cubical persistence
 
