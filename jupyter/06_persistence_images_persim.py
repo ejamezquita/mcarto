@@ -23,9 +23,8 @@ ndims = 3
 minlife = 0.5
 dpi = 96
 
-colors = ['r','b','forestgreen','magenta','gold','cyan','brown','orange']
-markers = ['o','d', '^','v','s','D','p','<','>']
-
+colors = ['#e0e0e0', '#56b4e9', '#009e73', '#0072b2', '#d55e00', '#cc79a7', '#e69f00', '#f0e442', '#000000']
+markers = ['D', '8', 's', '^', 'v', 'P', 'X', '*']
 def plot_embedding(nzcumsum, titles, embedding, alpha=0.05, label=None, nrows=2, ncols=4, ticks=False):
     
     q1, q3 = np.quantile(embedding[:,:2], [alpha, 1-alpha], axis=0)
@@ -37,10 +36,11 @@ def plot_embedding(nzcumsum, titles, embedding, alpha=0.05, label=None, nrows=2,
     ax = np.atleast_1d(ax).ravel()
     
     for i in range(len(nzcumsum) - 1):
-        ax[i].scatter(embedding[:,0], embedding[:,1], c='gray', marker='.', alpha=0.15, zorder=1)
+        ax[i].scatter(embedding[:,0], embedding[:,1], c='lightgray', marker='.', alpha=1, zorder=1, s=3)
         ax[i].set_facecolor('snow')
         s_ = np.s_[nzcumsum[i]:nzcumsum[i+1]]
-        ax[i].scatter(embedding[s_,0], embedding[s_,1], c=colors[i], marker=markers[i], alpha=0.5, zorder=2)
+        ax[i].scatter(embedding[s_,0], embedding[s_,1], c=colors[i], marker=markers[i], alpha=0.5, zorder=2,
+                      linewidth=0.5, edgecolor='k', s=50)
         ax[i].set_title(titles[i])
         ax[i].set_xlim(mn[0],mx[0])
         ax[i].set_ylim(mn[1],mx[1])
@@ -260,7 +260,7 @@ def main():
 
     pi = img.reshape(img.shape[0], img.shape[1]*img.shape[2])
     
-    for with_std in [True, False]:
+    for with_std in [True]:
     
         scaler = preprocessing.StandardScaler(with_mean=True, with_std=with_std, copy=True)
         data = scaler.fit_transform(pi)
@@ -334,11 +334,11 @@ def main():
 
         # # UMAP
         
-        for n_neighbors in [12,24]:
-            for min_dist in [0.0, 0.1]:
-                for metric in ['euclidean', 'manhattan', 'chebyshev']:
+        for n_neighbors in [4, 12, 24]:
+            for min_dist in [0.0, 0.1, 0.3]:
+                for metric in ['euclidean', 'chebyshev']:
                     
-                    ufit = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, n_components=n_components, metric=metric, random_state=seed, n_jobs=1)
+                    ufit = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, n_components=2, metric=metric, random_state=seed, n_jobs=1)
                     params = ufit.get_params();
                     method = 'UMAP'
                     bname = '{}_-_n+neighbors_{}_-_min+dist_{}_-_metric_{}_-_with+std_{}'.format(method.lower(), params['n_neighbors'], params['min_dist'],params['metric'], str(with_std) )                

@@ -376,7 +376,7 @@ def normalize_persistence_diagrams(orig_diags, ratios, norm_type, SCALE=256):
         print('H_{}:\t{} [ {:.1f}% ]'.format(i,mhist[i], 100*mhist[i]/num_diags) )
     print('\nWill focus just on dimension k = {}\n'.format(focus_dim) )
     
-    return orig_diags, rescale, focus_dim
+    return orig_diags, rescale, maxlife, focus_dim
     
 def reduce_num_of_diagrams(orig_diags, rescale, focus_dim, norm_type, minlife=1, keepall=False):
     
