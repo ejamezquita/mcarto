@@ -1,31 +1,41 @@
+import argparse
+import json
+from glob import glob
+import os
+
+os.environ["OMP_NUM_THREADS"] = "1" # export OMP_NUM_THREADS=4
+os.environ["OPENBLAS_NUM_THREADS"] = "1" # export OPENBLAS_NUM_THREADS=4 
+os.environ["MKL_NUM_THREADS"] = "1" # export MKL_NUM_THREADS=6
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1" # export VECLIB_MAXIMUM_THREADS=4
+os.environ["NUMEXPR_NUM_THREADS"] = "1" # export NUMEXPR_NUM_THREADS=6
+
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
-import json
-
-from glob import glob
-import os
 import persim
-
 import utils
 import umap
 
 from sklearn import decomposition, preprocessing, manifold
-import argparse
 
+marker = ['D', '8', 's', '^', 'v', 'P', 'X', '*']
+color = ['#56b4e9', '#f0e442', '#009e73', '#0072b2', '#d55e00', '#cc79a7', '#e69f00', '#f0e442', '#e0e0e0', '#000000']
+cmap = ['Blues_r', 'Wistia', 'Greens_r', 'BuPu_r', 'Oranges_r', 'RdPu_r']
 dest_directory = 'infected_focus_summer24'
-n_components = 12
-nrows, ncols = 2,3
 seed = 42
-SCALE = 256
 ndims = 3
-minlife = 0.5
+minlife = 0.05
 dpi = 96
+PP = 6
+alpha = 0.25
+iqr_factor = 1.5
+pcacol = 6
+fs = 12
 
-colors = ['#e0e0e0', '#56b4e9', '#009e73', '#0072b2', '#d55e00', '#cc79a7', '#e69f00', '#f0e442', '#000000']
-markers = ['D', '8', 's', '^', 'v', 'P', 'X', '*']
-def plot_embedding(nzcumsum, titles, embedding, alpha=0.05, label=None, nrows=2, ncols=4, ticks=False):
+nrows, ncols = 2,3
+
+def plot_embedding(nzcumsum, titles, embedding, label=None, alpha=0.0, nrows=2, ncols=4, ticks=True):
     
     q1, q3 = np.quantile(embedding[:,:2], [alpha, 1-alpha], axis=0)
     iqr = q3 - q1
@@ -39,7 +49,7 @@ def plot_embedding(nzcumsum, titles, embedding, alpha=0.05, label=None, nrows=2,
         ax[i].scatter(embedding[:,0], embedding[:,1], c='lightgray', marker='.', alpha=1, zorder=1, s=3)
         ax[i].set_facecolor('snow')
         s_ = np.s_[nzcumsum[i]:nzcumsum[i+1]]
-        ax[i].scatter(embedding[s_,0], embedding[s_,1], c=colors[i], marker=markers[i], alpha=0.5, zorder=2,
+        ax[i].scatter(embedding[s_,0], embedding[s_,1], c=color[i], marker=marker[i], alpha=0.5, zorder=2,
                       linewidth=0.5, edgecolor='k', s=50)
         ax[i].set_title(titles[i])
         ax[i].set_xlim(mn[0],mx[0])
@@ -64,13 +74,19 @@ def main():
                         help="Cross-section sample name")
     parser.add_argument("level", type=str, choices=['sup','sub'],
                         help="filtration to use")
-    parser.add_argument("-n", "--norm_type", type=str, choices=['both','gene'],
+    parser.add_argument("norm_type", type=str, choices=['both','gene'],
                         help="how to normalize all the KDEs")
+    parser.add_argument("-c", "--scale", type=int, default=16,
+                        help="scaling factor for easier treatment")
+    parser.add_argument("-b", "--bandwidth", type=int, default=10,
+                        help="KDE bandwidth")
+    parser.add_argument("-z", "--stepsize", type=int, default=3,
+                        help="KDE stepsize")
     parser.add_argument("-p", "--pers_w", type=int, default=1,
                         help="power for weight function")                        
-    parser.add_argument("-s", "--sigma", type=float, default=2,
+    parser.add_argument("-s", "--sigma", type=float, default=1,
                         help="sigma for persistent images")  
-    parser.add_argument("-x", "--pixel_size", type=int, default=4,
+    parser.add_argument("-x", "--pixel_size", type=int, default=1,
                         help="pixel size for persistent images")  
     parser.add_argument("--cell_wall_directory", type=str, default="cell_dams",
                         help="directory containing cell wall TIFs")
@@ -92,6 +108,9 @@ def main():
     sigma = args.sigma
     pers_w = args.pers_w
     pixel_size = args.pixel_size
+    bw = args.bandwidth
+    stepsize = args.stepsize
+    SCALE = args.scale
 
     wsrc = '..' + os.sep + args.cell_wall_directory + os.sep
     nsrc = '..' + os.sep + args.nuclear_directory + os.sep
@@ -113,16 +132,10 @@ def main():
     Genes = utils.get_range_gene_values(dst + 'genes_to_focus_infection.csv', transcriptomes, startval=0)
     titles = transcriptomes[Genes]
 
-    foo = glob(gsrc + transcriptomes[Genes[0]] + os.sep + '*')[0]
-    bar = os.path.split(foo)[1].split('_')
-    PP = int(bar[4][1:])
-    stepsize = int(bar[5][1:])
-    bw = int(bar[6][2:])
-
     transfocus = transcell.loc[Genes, Cells.astype(str)]
     ratios = utils.normalize_counts(transfocus, normtype)
     if ratios is None:
-        print('ERROR')
+        print('ERROR: ratios is None')
         return 0
 
     print('Max ratio by {}:\t{:.2f}%'.format(normtype, 100*np.max(ratios) ) )
@@ -218,146 +231,227 @@ def main():
                  'kernel_params':{'sigma': [[sigma, 0.0], [0.0, sigma]]} }
                                
     pimgr = persim.PersistenceImager(**pi_params)
-    extent = [ pimgr.birth_range[0], pimgr.birth_range[1], pimgr.pers_range[0], pimgr.pers_range[1] ]
-    img = np.asarray(pimgr.transform(lt_coll, skew=False, n_jobs=1))
-
-    # # Explore
-
-    bname = '{}level_-_by_{}_-_sigma_{}_-_pers+n_{}_-_pixel+size_{}'.format(level, normtype, int(sigma), pers_w, pixel_size)
-    Bname = '{}level persistence. {} normalized. $\sigma = {}$. Weighted by $n^{}$. Pixel size {}.'.format(level.title(), normtype.title(), int(sigma), pers_w, pixel_size)
-    tdst = dst + bname + os.sep
-    if not os.path.isdir(tdst):
-        os.mkdir(tdst)
+    extent = np.array([ pimgr.birth_range[0], pimgr.birth_range[1], pimgr.pers_range[0], pimgr.pers_range[1] ]).astype(int)
+    img = np.asarray(pimgr.transform(lt_coll, skew=False))
+    img[img < 0] = 0
+    pi = img.reshape(img.shape[0], img.shape[1]*img.shape[2])
+    maxpis = np.max(pi, axis=1)
 
     avg = np.zeros( (len(nzcumsum) - 1, pimgr.resolution[1], pimgr.resolution[0]))
     for i in range(len(avg)):
         s_ = np.s_[nzcumsum[i]:nzcumsum[i+1]]
         avg[i] = np.mean(img[s_], axis=0).T
 
+    boxes = [ maxpis[nzcumsum[i]:nzcumsum[i+1]] for i in range(len(Genes)) ]
+    qq = np.asarray([ np.quantile(boxes[i], [alpha, 1-alpha]) for i in range(len(boxes)) ])
+    thr = np.max(qq[:,1] + iqr_factor*(qq[:,1] - qq[:,0]))
+    maxmask = maxpis < thr
+    
+    foo = [bw, stepsize, level.title(), normtype.title(), sigma, pers_w]
+    bname = 'scale{}_-_PI_{}_{}_{}_'.format(SCALE, sigma, pers_w, pixel_size)
+    Bname = 'KDE bandwidth {}, stepsize {}. {}level persistence. {} normalized. PIs $\sigma = {}$. Weighted by $n^{{{}}}$.'.format(*foo)
+    tdst = dst + 'G{}_{}level_{}_step{}_bw{}'.format(len(Genes), level, normtype, stepsize, bw) + os.sep
+    if not os.path.isdir(tdst):
+        os.mkdir(tdst)
+        print(tdst)
 
-    fig, ax = plt.subplots(nrows, ncols, figsize=(2.75*ncols, 2.15*nrows+1), sharex=True, sharey=True)
-    ax = np.atleast_1d(ax).ravel()
+    filename = tdst + bname + 'average_PI'
+    if rewrite or (not os.path.isfile(filename)):
+        vmax = np.max(np.max(avg, axis=(1,2)))
+        fig, ax = plt.subplots(nrows, ncols, figsize=(2.75*ncols, 2.15*nrows+1), sharex=True, sharey=True)
+        ax = np.atleast_1d(ax).ravel()
 
-    for i in range(len(nzcumsum)-1):
-        ax[i].imshow(avg[i], cmap='inferno', origin='lower', vmin=0,  extent=extent)
-        ax[i].text((extent[1] - extent[0])*.95, (extent[3] - extent[2])*.95, 
-                   'Max val:\n{:.1f}'.format(np.max(avg[i])), color='w', ha='right', va='top')
-        ax[i].set_title(transcriptomes[Genes[i]])
+        for i in range(len(nzcumsum)-1):
+            ax[i].imshow(avg[i], cmap='inferno', origin='lower', vmin=0, vmax=vmax, extent=extent)
+            ax[i].text((extent[1] - extent[0])*.95, (extent[3] - extent[2])*.95, 
+                       'Max val:\n{:.2f}'.format(np.max(avg[i])), color='w', ha='right', va='top')
+            ax[i].set_title(transcriptomes[Genes[i]], fontsize=fs)
 
-    for i in range( len(ax) - len(nzcumsum)+1 , 0, -1):
-        fig.delaxes(ax[-i])
+        for i in range( len(ax) - len(nzcumsum)+1 , 0, -1):
+            fig.delaxes(ax[-i])
 
-    fig.supxlabel('Birth', y=.04); 
-    fig.supylabel('Persistence')
-    fig.suptitle(Bname)
+        fig.supxlabel('Birth', y=.04, fontsize=fs); 
+        fig.supylabel('Lifetime', fontsize=fs)
+        fig.suptitle(Bname, fontsize=fs)
 
-    fig.tight_layout()
-    filename = tdst + 'average_persistence_images'
-    plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
-    plt.close()
+        fig.tight_layout()
+        plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+        plt.close()
 
     # # Reduce dimension
-
-    pi = img.reshape(img.shape[0], img.shape[1]*img.shape[2])
+    filename = tdst + bname + 'max_PI_val_boxplot'
+    if rewrite or (not os.path.isfile(filename)):
     
-    for with_std in [True]:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 2*len(Genes)/3), sharex=True, sharey=True)
+        ax = np.atleast_1d(ax).ravel(); i = 0
+        ax[i].axvline(thr, c='r', ls='--', zorder=1)
+        ax[i].boxplot(boxes, vert=False, zorder=2, widths=0.75)
+        ax[i].set_xlabel('Max PI value', fontsize=fs)
+        ax[i].set_title(Bname, fontsize=fs)
+        ax[i].set_yticks(range(1,len(boxes)+1), transcriptomes[Genes], fontsize=fs)
+
+        filename = tdst + bname + 'max_PI_val_boxplot'
+        plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+        plt.close()
+        
+    scaler = preprocessing.StandardScaler(copy=True, with_std=False, with_mean=True)
+    data = scaler.fit_transform(pi[maxmask].copy())
+    nz = np.hstack( ( [0], np.cumsum([ np.sum(maxmask[nzcumsum[i]:nzcumsum[i+1]]) for i in range(len(Genes)) ])))
+    fulldata = scaler.transform(pi)
     
-        scaler = preprocessing.StandardScaler(with_mean=True, with_std=with_std, copy=True)
-        data = scaler.fit_transform(pi)
+    ## PCA
+    
+    method = 'PCA'
+    filename = tdst + bname + method.lower() + '.csv'
+    
+    if rewrite or (not os.path.isfile(filename)):
+        
+        PCA = decomposition.PCA(n_components=data.shape[1]//20, random_state=seed)
+        print('Considering the first',data.shape[1]//20,'PCs')
+        PCA.fit(data)
+        pca = PCA.transform(fulldata).astype('float32')
+        loadings = PCA.components_.T * np.sqrt(PCA.explained_variance_)
+        explained_ratio = 100*PCA.explained_variance_ratio_
+        
+        summary = pd.DataFrame(pca, columns=['{}{:02d} ({:.2f})'.format(method, i+1, explained_ratio[i]) for i in range(pca.shape[1])])
+        summary['gene_ID'] = np.repeat(Genes, list(map(len, nzmask)) )
+        summary['ndimage_ID'] = np.hstack([ Cells[ nzmask[i] ] for i in range(len(nzmask)) ])
+        summary.iloc[:, [-1,-2] + list(range(pca.shape[1]) )]
+        summary.to_csv(tdst + bname + method.lower() + '.csv')
+        
+        ###
+        
+        pcarow = np.where(pca.shape[1] % pcacol == 0, pca.shape[1]//pcacol, pca.shape[1]//pcacol + 1) + 0
+        fig, ax = plt.subplots(pcarow, pcacol, figsize=(12, 2.25*pcarow), sharex=True, sharey=True)
+        ax = np.atleast_1d(ax).ravel(); i = 0
+        for i in range(loadings.shape[1]):
+            ll = loadings[:,i].reshape(img.shape[1],img.shape[2]).T
+            vmax = np.max(np.abs(ll))
+            ax[i].imshow(ll, cmap='coolwarm', vmax=vmax, vmin=-vmax, origin='lower', extent=extent)
+            ax[i].set_title('{} {:02d} ({:.2f}%)'.format(method, i+1, explained_ratio[i]), fontsize=fs)
 
-        # # PCA
+        for i in range(loadings.shape[1], len(ax)):
+            fig.delaxes(ax[i])
+        fig.supxlabel('Birth', y=.04, fontsize=fs); 
+        fig.supylabel('Lifetime', fontsize=fs)
+        fig.suptitle(Bname, fontsize=fs)
+        fig.tight_layout();
+        filename = tdst + bname + method.lower() + '_loadings'
+        plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+        plt.close()
+        
+        ###
+        
+        fig, ax = plot_embedding(nzcumsum, titles, pca, method, nrows=nrows, ncols=ncols)
+        fig.suptitle(Bname)
+        fig.tight_layout();
+        filename = tdst + bname + method.lower()
+        plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+        plt.close()
+    
+    ## t-SNE
+    
+    method = 'tSNE'
+    t_sne = manifold.TSNE(
+        n_components=2,
+        perplexity=25,
+        init="random",
+        n_iter=250,
+        random_state=seed,
+    )
+    params = t_sne.get_params()
+    filename = tdst + bname + '{}_{}.csv'.format(method.lower(), params['perplexity'])
+    
+    if rewrite or (not os.path.isfile(filename)):
+        tsne = t_sne.fit_transform(fulldata).astype('float32')
+        
+        summary = pd.DataFrame(tsne, columns=['{}{:02d}'.format(method, i+1) for i in range(tsne.shape[1])])
+        summary['gene_ID'] = np.repeat(Genes, list(map(len, nzmask)) )
+        summary['ndimage_ID'] = np.hstack([ Cells[ nzmask[i] ] for i in range(len(nzmask)) ])
+        summary.iloc[:, [-1,-2] + list(range(tsne.shape[1]) )]
+        summary.to_csv(tdst + bname + '{}_{}.csv'.format(method.lower(), params['perplexity']))
 
-        PCA = decomposition.PCA(n_components=n_components, random_state=seed)
-        method = 'PCA'
-        bname = '{}_-_with+std_{}'.format(method.lower(), str(with_std) )
-        filename = tdst+bname+'.npy'
+        fig, ax = plot_embedding(nzcumsum, titles, tsne, method, nrows=nrows, ncols=ncols)
+        fig.suptitle(Bname)
+        fig.tight_layout();
+        filename = tdst + bname + '{}_{}.csv'.format(method.lower(), params['perplexity'])
+        plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+        plt.close()
+    
+    for n_neighbors in [8,16,32]:
+    
+        ## Locally Linear Embeddings
+        
+        method = 'LLE'
+        params = {"n_neighbors": n_neighbors,"n_components": 2, "eigen_solver": "auto","random_state": seed}
+        LLE = manifold.LocallyLinearEmbedding(method="standard", **params)
+        params = LLE.get_params()
+        filename = tdst + bname + '{}_{}_{}.csv'.format(method.lower(), LLE.method, params['n_neighbors'])
         
         if rewrite or (not os.path.isfile(filename)):
+        
+            LLE.fit(data)
+            lle = LLE.transform(fulldata).astype('float32')
+            
+            summary = pd.DataFrame(lle, columns=['{}{:02d}'.format(method, i+1) for i in range(lle.shape[1])])
+            summary['gene_ID'] = np.repeat(Genes, list(map(len, nzmask)) )
+            summary['ndimage_ID'] = np.hstack([ Cells[ nzmask[i] ] for i in range(len(nzmask)) ])
+            summary.iloc[:, [-1,-2] + list(range(lle.shape[1]) )]
+            summary.to_csv(tdst + bname + '{}_{}_{}.csv'.format(method.lower(), LLE.method, params['n_neighbors']))
 
-            pca = PCA.fit_transform(data).astype('float32')
-
-            np.save(tdst+bname+'.npy', pca, allow_pickle=True)
-
-            fig, ax = plot_embedding(nzcumsum, titles, pca, 0.01, method, nrows=nrows, ncols=ncols)
-            fig.suptitle( Bname + ' [ {:.1f}% , {:.1f}%, {:.1f}% ]'.format(*PCA.explained_variance_ratio_[:3]*100) )
+            fig, ax = plot_embedding(nzcumsum, titles, lle, method, nrows=nrows, ncols=ncols)
+            fig.suptitle(Bname)
             fig.tight_layout();
-            filename = tdst + bname
+            filename = tdst + bname + '{}_{}_{}'.format(method.lower(), LLE.method, params['n_neighbors'])
+            plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+        
+        ## Isomap
+        
+        method = 'ISO'
+        params = {"n_neighbors": n_neighbors,"n_components": 2,"eigen_solver": "auto"}
+        ISO = manifold.Isomap(**params)
+        params = ISO.get_params()
+        filename = tdst + bname + '{}_{}.csv'.format(method.lower(), params['n_neighbors'])
+        
+        if rewrite or (not os.path.isfile(filename)):
+            ISO.fit(data)
+            iso = ISO.transform(fulldata).astype('float32')
+            
+            summary = pd.DataFrame(iso, columns=['{}{:02d}'.format(method, i+1) for i in range(iso.shape[1])])
+            summary['gene_ID'] = np.repeat(Genes, list(map(len, nzmask)) )
+            summary['ndimage_ID'] = np.hstack([ Cells[ nzmask[i] ] for i in range(len(nzmask)) ])
+            summary.iloc[:, [-1,-2] + list(range(iso.shape[1]) )]
+            summary.to_csv(tdst + bname + '{}_{}.csv'.format(method.lower(), params['n_neighbors']))
+
+            fig, ax = plot_embedding(nzcumsum, titles, iso, method, nrows=nrows, ncols=ncols)
+            fig.suptitle(Bname)
+            fig.tight_layout();
+            filename = tdst + bname + '{}_{}.csv'.format(method.lower(), params['n_neighbors'])
             plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
             plt.close()
-
-        if False:
-            
-            # # Locally Linear Embeddings
         
-            n_neighbors = 12  # neighborhood which is used to recover the locally linear structure
-            params = {"n_neighbors": n_neighbors,"n_components": n_components,"eigen_solver": "auto","random_state": seed, "n_jobs":1}
-            LLE = manifold.LocallyLinearEmbedding(method="standard", **params)
-            params = LLE.get_params()
-            method = 'LLE'
-            bname = '{}_-_method_{}_-_n+neighbors_{}_-_with+std_{}'.format(method.lower(), LLE.method, params['n_neighbors'], str(with_std))
-            filename = tdst+bname+'.npy'
-            
-            if rewrite or (not os.path.isfile(filename)):
-                lle = LLE.fit_transform(data).astype('float32')
-            
-                np.save(tdst+bname+'.npy', lle, allow_pickle=True)
-
-                fig, ax = plot_embedding(nzcumsum, titles, lle, 0.01, method, nrows=nrows, ncols=ncols)
-                fig.suptitle(Bname)
-                fig.tight_layout();
-                filename = tdst + bname
-                plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
-                plt.close()
-
-            # # tSNE
-            
-            for perplexity in [30]:
-                
-                t_sne = manifold.TSNE(n_components=2, perplexity=perplexity, init="pca", n_iter=250, random_state=seed, metric='euclidean', n_jobs=1)
-                params = t_sne.get_params()
-                method = 'tSNE'
-                bname = '{}_-_perplexity_{}_-_init_{}_-_n+iter_{}_-_with+std_{}'.format(method.lower(), params['perplexity'], params['init'],params['n_iter'],str(with_std))
-                filename = tdst+bname+'.npy'
-
-                if rewrite or (not os.path.isfile(filename)):
-                    
-                    tsne = t_sne.fit_transform(data).astype('float32')
-                    print(bname)
-                    np.save(tdst+bname+'.npy', tsne, allow_pickle=True)
-
-                    fig, ax = plot_embedding(nzcumsum, titles, tsne, 0.01, method, nrows=nrows, ncols=ncols)
-                    fig.suptitle(Bname)
-                    fig.tight_layout();
-                    filename = tdst + bname
-                    plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
-                    plt.close()
-
-        # # UMAP
+        ## UMAP 
         
-        for n_neighbors in [4, 12, 24]:
-            for min_dist in [0.0, 0.1, 0.3]:
-                for metric in ['euclidean', 'chebyshev']:
-                    
-                    ufit = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, n_components=2, metric=metric, random_state=seed, n_jobs=1)
-                    params = ufit.get_params();
-                    method = 'UMAP'
-                    bname = '{}_-_n+neighbors_{}_-_min+dist_{}_-_metric_{}_-_with+std_{}'.format(method.lower(), params['n_neighbors'], params['min_dist'],params['metric'], str(with_std) )                
-                    filename = tdst+bname+'.npy'
+        method = 'UMAP'
+        ufit = umap.UMAP(n_neighbors=n_neighbors, min_dist=0.2, n_components=2, metric='euclidean', random_state=seed, n_jobs=1)
+        params = ufit.get_params()
+        filename = tdst + bname + '{}_{}_{}_{}_{}.csv'.format(method.lower(), params['n_neighbors'], params['min_dist'],params['metric'],params['n_components'])
+            
+        if rewrite or (not os.path.isfile(filename)):
+            u_umap = ufit.fit_transform(fulldata);
+            summary = pd.DataFrame(u_umap, columns=['{}{:02d}'.format(method, i+1) for i in range(u_umap.shape[1])])
+            summary['gene_ID'] = np.repeat(Genes, list(map(len, nzmask)) )
+            summary['ndimage_ID'] = np.hstack([ Cells[ nzmask[i] ] for i in range(len(nzmask)) ])
+            summary.iloc[:, [-1,-2] + list(range(u_umap.shape[1]) )]
+            summary.to_csv(tdst + bname + '{}_{}_{}_{}_{}.csv'.format(method.lower(), params['n_neighbors'], params['min_dist'],params['metric'],params['n_components']))
 
-                    if rewrite or (not os.path.isfile(filename)):
-                        
-                        u_umap = ufit.fit_transform(data);
-
-                        print(bname)
-                        np.save(tdst+bname+'.npy', u_umap, allow_pickle=True)
-
-                        fig, ax = plot_embedding(nzcumsum, titles, u_umap, 0.01, method, nrows=nrows, ncols=ncols)
-                        fig.suptitle(Bname)
-                        fig.tight_layout();
-                        filename = tdst + bname
-                        plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
-                        plt.close()
-
+            fig, ax = plot_embedding(nzcumsum, titles, u_umap, method, nrows=nrows, ncols=ncols)
+            fig.suptitle(Bname)
+            fig.tight_layout();
+            filename = tdst + bname + '{}_{}_{}_{}_{}'.format(method.lower(), params['n_neighbors'], params['min_dist'],params['metric'],params['n_components'])
+            plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+            plt.close()
+    
     return 0
 
 if __name__ == '__main__':

@@ -8,6 +8,7 @@ from scipy import ndimage, stats
 import gudhi as gd
 import json
 
+from KDEpy import FFTKDE
 import argparse
 import utils
 
@@ -15,6 +16,7 @@ pows2 = 2**np.arange(20) + 1
 PP = 6
 pp = 0
 levelnum = 2
+BW = [15,20,25]
 
 def main():
     
@@ -120,8 +122,19 @@ def main():
 
     for cidx in Cells:
         
-        cell, extent = utils.get_cell_img(cidx, metacell, wall, label, PP=PP, pxbar=False)
-        axes, grid, gmask, cgrid, cgridmask = utils.cell_grid_preparation(cell, extent, zmax, stepsize, pows2)
+        s_ = (np.s_[max([0, metacell.loc[cidx, 'y0'] - PP]) : min([wall.shape[0], metacell.loc[cidx, 'y1'] + PP])],
+              np.s_[max([1, metacell.loc[cidx, 'x0'] - PP]) : min([wall.shape[1], metacell.loc[cidx, 'x1'] + PP])])
+        extent = (s_[1].start, s_[1].stop, s_[0].start, s_[0].stop)
+        cell = wall[s_].copy().astype(np.uint8)
+        cell[ label[s_] == cidx ] = 2
+        cell[~wall[s_]] = 0
+        maxdims = ( cell.shape[1], cell.shape[0], zmax )
+        axes, grid, gmask = utils.kde_grid_generator(stepsize=stepsize, maxdims=maxdims, pows2 = pows2, pad=1.5)
+        grid[:, :2] = grid[:, :2] + np.array([ extent[0], extent[2] ])
+        
+        cgrid = grid[gmask].copy()
+        cgrid[:,:2] = grid[gmask][:,:2] - np.array([ extent[0], extent[2] ])
+        cgridmask = cell[cgrid[:,1],cgrid[:,0]] != 2
         
         for tidx in Genes:
 
@@ -129,28 +142,33 @@ def main():
             cmask = label[ coords[1], coords[0] ] == cidx
             
             if np.sum(cmask) > 1:
-                
+                w = weight[tcumsum[tidx]:tcumsum[tidx+1]][cmask]
                 foo = glob('..' + os.sep + '*level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep + '*c{:06d}.json'.format(cidx))
+                
                 if rewrite or ( len(foo) != levelnum ):
             
                     ccoords = coords[:, cmask ].copy()
-
                     # # Compute, crop, and correct the KDE
+                    
+                    for bw in BW:
 
-                    w = weight[tcumsum[tidx]:tcumsum[tidx+1]][cmask]
-                    kde = utils.cell_weighted_kde(ccoords.T, grid, w, bw, gmask, stepsize, cgridmask, axes)
+                        kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(ccoords.T, w).evaluate(grid)
+                        kde = kde[gmask]/( np.sum(kde[gmask]) * (stepsize**len(coords)) )
+                        kde[ cgridmask ] = 0
+                        kde = kde/( np.sum(kde) * (stepsize**len(coords)) )
+                        kde = kde.reshape( list(map(len, axes))[::-1], order='F')
+                        
+                        # # Cubical persistence
 
-                    # # Cubical persistence
-
-                    for level in Levels:
-                        tdst = '..' + os.sep + level + 'level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep
-                        filename = tdst + transcriptomes[tidx] + '_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(level,PP,stepsize,bw,cidx)
-                        if not os.path.isfile(filename):
-                            cc = gd.CubicalComplex(top_dimensional_cells = utils.get_level_filtration(kde, level) )
-                            pers = cc.persistence(homology_coeff_field=2, min_persistence=1e-15)
-                            print(filename)
-                            with open(filename, 'w') as f:
-                                json.dump(pers,f)
+                        for level in Levels:
+                            tdst = '..' + os.sep + level + 'level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep
+                            filename = tdst + transcriptomes[tidx] + '_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(level,PP,stepsize,bw,cidx)
+                            if not os.path.isfile(filename):
+                                cc = gd.CubicalComplex(top_dimensional_cells = utils.get_level_filtration(kde, level) )
+                                pers = cc.persistence(homology_coeff_field=2, min_persistence=1e-15)
+                                print(filename)
+                                with open(filename, 'w') as f:
+                                    json.dump(pers,f)
 
     return 0
 
