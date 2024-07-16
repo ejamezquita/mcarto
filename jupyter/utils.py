@@ -419,9 +419,10 @@ def birthdeath_to_flattened_lifetime(diags, num_diags):
     for i in range(len(diags)):
         for j in range(len(diags[i])):
             lt_coll[k] = np.column_stack( (diags[i][j][:, 0], diags[i][j][:, 1] - diags[i][j][:, 0]) )
-            foo = np.max(diags[i][j][:, 0])
-            if foo > maxbirth:
-                maxbirth = foo
+            if len(diags[i][j]) > 0:
+                foo = np.max(diags[i][j][:, 0])
+                if foo > maxbirth:
+                    maxbirth = foo
             k += 1
 
     return lt_coll, maxbirth
