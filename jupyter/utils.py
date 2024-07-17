@@ -460,3 +460,27 @@ def get_diagram_match_coordinates(dgm1, dgm2, dm):
     
     return np.array(xy)
     
+
+def minimum_qq_size(arr, min_thr=None, alpha=0.15, iqr_factor=1.25, ignore=None):
+    if ignore is not None:
+        foo = arr[arr > ignore]
+    else:
+        foo = arr
+    if min_thr is None:
+        min_thr = np.min(foo)
+    q1, q3 = np.quantile(foo, [alpha, 1-alpha])
+    
+    return max([q1-iqr_factor*(q3 - q1) , min_thr])
+    
+def maximum_qq_size(arr, max_thr=None, alpha=0.15, iqr_factor=1.25, ignore=None):
+    
+    if ignore is not None:
+        foo = arr[arr < ignore]
+    else:
+        foo = arr
+        
+    if max_thr is None:
+        max_thr = np.max(foo)
+    q1, q3 = np.quantile(foo, [alpha, 1-alpha])
+    
+    return min([q3 + iqr_factor*(q3 - q1) , max_thr])
