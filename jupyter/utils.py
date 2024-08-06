@@ -227,7 +227,8 @@ def generate_transcell_metadata(translocs, transcriptomes, cellnum, label):
     bins = np.arange(1, cellnum + 2)
     for tidx in range(len(meta)):
         coords = translocs[tidx].loc[:, ['X', 'Y']].values.T
-        meta[tidx], _ = np.histogram(label[coords[1], coords[0]], bins=bins)
+        if coords.shape[1] > 0:
+            meta[tidx], _ = np.histogram(label[coords[1], coords[0]], bins=bins)
         
     meta = pd.DataFrame(meta, columns=bins[:-1])
     meta['gene'] = transcriptomes
