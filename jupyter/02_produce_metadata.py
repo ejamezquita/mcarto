@@ -47,10 +47,6 @@ def main():
 
     wall = tf.imread(wsrc + sample + '_dams.tif').astype(bool)
     nuclei = tf.imread(nsrc + sample + '_EDT.tif') < args.nuclei_mask_cutoff
-    
-    label, cellnum = ndimage.label(wall, ndimage.generate_binary_structure(2,1))
-
-    print('Detected',cellnum,'cells')
 
     filenames = sorted(glob(tsrc + sample + os.sep + '*.csv'))
     tsize = np.zeros(len(filenames), dtype=int)
@@ -62,18 +58,28 @@ def main():
 
     filename = dst + sample + '_cells_metadata.csv'
     if rewrite or (not os.path.isfile(filename)):
+        label, cellnum = ndimage.label(wall, ndimage.generate_binary_structure(2,1))
+        print('Detected',cellnum,'cells')
         celllocs = utils.celllocs_read(csrc + sample + '_data/' + transcriptomes[1] + '/' + transcriptomes[1] + ' - localization results by cell.csv')
-        dcoords, cnuclei, cmatches = utils.match_original_ndimage(celllocs, wall, label, cellnum)
+        dcoords, cnuclei, argmatches, orig_cellID = utils.match_original_ndimage(celllocs, wall, label, cellnum)
         objss = ndimage.find_objects(label)
 
         meta = utils.generate_cell_metadata(label, objss, nuclei)
-        meta = meta.join(pd.DataFrame(np.round(dcoords[cmatches], 2), columns=['orig_comX', 'orig_comY']))
+        orig_com = np.round(dcoords[argmatches], 2)
+        orig_com[orig_cellID == 0] = 0
+        meta = meta.join(pd.DataFrame( orig_com, columns=['orig_comX', 'orig_comY']))
         meta = meta.join(pd.DataFrame(np.round(np.flip(cnuclei, axis=1),2), columns=['ndimage_comX', 'ndimage_comY']))
-        meta['orig_cellID'] = celllocs['Cell.ID..'].values[cmatches]
+        meta['orig_cellID'] = orig_cellID
         meta['ndimage_cellID'] = np.arange(1,cellnum+1)
         meta.set_index(keys=['ndimage_cellID']).to_csv(filename, index_label='ndimage_cellID')
-        print('Created:\t', filename)
-
+    
+    metacell = pd.read_csv(filename, index_col=0)
+    print('Number of unmatched ndimage labels:\t', len(metacell.loc[metacell['orig_cellID'] == 0]) )
+    uq, ct = np.unique(metacell.loc[metacell['orig_cellID'] > 0, 'orig_cellID'].values, return_counts=True)
+    print('IDs with more than one ndimage cell:', np.sum(ct > 1))
+    d = metacell[metacell['orig_cellID'] != 0].loc[:, ['orig_comX','orig_comY','ndimage_comX','ndimage_comY']].values
+    print( pd.Series(np.sqrt((d[:,0] - d[:,2])**2 + (d[:,1] - d[:,3])**2)).describe() )
+    
     filename = dst + sample + '_transcripts_metadata.csv'
     if rewrite or (not os.path.isfile(filename)):
         data = pd.read_csv(csrc + sample + '_data'+os.sep+'32771-slide1_' + sample + '_results.txt', header=None, sep='\t').drop(columns=[4])

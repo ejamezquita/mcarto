@@ -202,12 +202,12 @@ def match_original_ndimage(celllocs, wall, label, cellnum):
     cnuclei = np.asarray(ndimage.center_of_mass(wall, label, range(1,cellnum+1)))
     dcoords = celllocs.iloc[:, 1:3].values
     cdist = spatial.distance.cdist(np.flip(cnuclei, axis=1), dcoords, metric='euclidean')
-    cmatches = np.argmin(cdist, axis=1)
-    foo = len(np.unique(cmatches))
-    print("Matched {} ndimage.cells to {} unique cells in the metadata".format(cellnum,foo))
-    print("Out of {} cells in the metadata\n{}".format(len(celllocs),foo>=cellnum) )
+    argmatches = np.argmin(cdist, axis=1)
+    matches = np.min(cdist, axis=1)
+    orig_cellID = celllocs['Cell.ID..'].values[argmatches]
+    orig_cellID[ matches > 5+0.1*(np.sqrt(celllocs.iloc[argmatches].loc[:, 'Cell.Area..px.'])) ] = 0
 
-    return dcoords, cnuclei, cmatches
+    return dcoords, cnuclei, argmatches, orig_cellID
 
 def generate_cell_metadata(label, objss, nuclei):
     meta = np.zeros((len(objss), 8), dtype=int)
