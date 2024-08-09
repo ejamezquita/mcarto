@@ -7,6 +7,10 @@ from scipy import ndimage, spatial
 import argparse
 import utils
 
+PP = 0
+min_n_ratio = 0.05
+min_N_ratio = 0.75
+
 def main():
     
     parser = argparse.ArgumentParser(description="Produce cell and gene metadata that will be useful later.",
@@ -59,19 +63,38 @@ def main():
     filename = dst + sample + '_cells_metadata.csv'
     if rewrite or (not os.path.isfile(filename)):
         label, cellnum = ndimage.label(wall, ndimage.generate_binary_structure(2,1))
+        objss = ndimage.find_objects(label)
         print('Detected',cellnum,'cells')
+        
         celllocs = utils.celllocs_read(csrc + sample + '_data/' + transcriptomes[1] + '/' + transcriptomes[1] + ' - localization results by cell.csv')
         dcoords, cnuclei, argmatches, orig_cellID = utils.match_original_ndimage(celllocs, wall, label, cellnum)
-        objss = ndimage.find_objects(label)
-
+        
         meta = utils.generate_cell_metadata(label, objss, nuclei)
+        meta['ndimage_cellID'] = np.arange(1,cellnum+1)
+        meta = meta.set_index(keys=['ndimage_cellID'])
+        
+        lnuc, nnuc = ndimage.label(nuclei, ndimage.generate_binary_structure(2,1))
+        nuc_area, _ = np.histogram(lnuc, bins=np.arange(nnuc + 2))
+        nuc_area[0] = 0
+        print('Detected',nnuc,'nuclei')
+        
+        number_nuclei = np.zeros(len(meta), dtype=int)
+        for i in np.nonzero(meta['nuclei_area'] > 100)[0]:
+            cidx = meta.iloc[i].name
+            ss = (np.s_[max([0, meta.loc[cidx, 'y0'] - PP]) : min([wall.shape[0], meta.loc[cidx, 'y1'] + PP])],
+                  np.s_[max([1, meta.loc[cidx, 'x0'] - PP]) : min([wall.shape[1], meta.loc[cidx, 'x1'] + PP])])
+            
+            uq, ct = np.unique(lnuc[ss][(lnuc[ss] > 0) & (label[ss] == cidx)], return_counts=True)
+            number_nuclei[i] = np.sum( ( (ct/np.sum(ct)) > min_n_ratio ) & (ct/nuc_area[uq] > min_N_ratio) )
+        
+        meta['number_nuclei'] = number_nuclei
         orig_com = np.round(dcoords[argmatches], 2)
         orig_com[orig_cellID == 0] = 0
-        meta = meta.join(pd.DataFrame( orig_com, columns=['orig_comX', 'orig_comY']))
-        meta = meta.join(pd.DataFrame(np.round(np.flip(cnuclei, axis=1),2), columns=['ndimage_comX', 'ndimage_comY']))
+        meta = meta.join(pd.DataFrame( orig_com, columns=['orig_comX', 'orig_comY'], index=meta.index))
+        meta = meta.join(pd.DataFrame(np.round(np.flip(cnuclei, axis=1),2), columns=['ndimage_comX', 'ndimage_comY'], index=meta.index))
         meta['orig_cellID'] = orig_cellID
-        meta['ndimage_cellID'] = np.arange(1,cellnum+1)
-        meta.set_index(keys=['ndimage_cellID']).to_csv(filename, index_label='ndimage_cellID')
+        meta.to_csv(filename, index_label='ndimage_cellID')
+        print('Created:\t', filename)
     
     metacell = pd.read_csv(filename, index_col=0)
     print('Number of unmatched ndimage labels:\t', len(metacell.loc[metacell['orig_cellID'] == 0]) )

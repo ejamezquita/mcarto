@@ -1,7 +1,6 @@
 import argparse
 import json
 import functools
-import collections
 from glob import glob
 import os
 import itertools
@@ -18,17 +17,15 @@ import numpy as np
 import pandas as pd
 import persim
 import utils
-import umap
-
-from sklearn import decomposition, preprocessing, manifold
+from sklearn import decomposition, preprocessing
 
 marker = ['D', '8', 's', '^', 'v', 'P', 'X', '*']
-color = ['#56b4e9', '#f0e442', '#009e73', '#0072b2', '#d55e00', '#cc79a7', '#e69f00', '#f0e442', '#e0e0e0', '#000000']
-cmap = ['Blues_r', 'Wistia', 'Greens_r', 'BuPu_r', 'Oranges_r', 'RdPu_r']
+color = ['#56b4e9', '#f0e442', '#009e73', '#0072b2', '#d55e00', '#cc79a7', '#e69f00', '#e0e0e0', '#000000']
+cmap = ['Blues_r', 'Wistia', 'Greens_r', 'BuPu_r', 'Oranges_r', 'RdPu_r', 'YlOrBr_r', 'gray', 'gist_gray']
 dest_directory = 'infected_focus_summer24'
 seed = 42
 ndims = 3
-minlife = 0.05
+minlife = 0.0
 dpi = 96
 PP = 6
 alpha = 0.25
@@ -71,7 +68,7 @@ def plot_embedding(nzcumsum, titles, embedding, label=None, alpha=0.0, nrows=2, 
 
 def main():
     
-    parser = argparse.ArgumentParser(description="Produce cell and gene metadata that will be useful later.",
+    parser = argparse.ArgumentParser(description="Produce Persistence Image summaries.",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter,
                                      epilog='Last major update: May 2024. © Erik Amezquita')
     parser.add_argument("sample", type=str,
@@ -124,7 +121,7 @@ def main():
 
     dst += sample + os.sep
 
-    metacell = pd.read_csv(ksrc + sample + '_cells_metadata.csv')
+    metacell = pd.read_csv(ksrc + sample + '_cells_metadata.csv', index_col=0)
     metatrans = pd.read_csv(ksrc + sample + '_transcripts_metadata.csv')
     transcell = pd.read_csv(ksrc + sample + '_transcells_metadata.csv')
     transcriptomes = np.asarray(list(metatrans['gene']))
@@ -133,6 +130,7 @@ def main():
     gsrc += sample + os.sep
 
     Cells = utils.get_range_cell_values(dst + 'infected_cells_ids.csv', metacell, startval=1)
+    Cells = np.setdiff1d( Cells, metacell[metacell['number_nuclei'] > 1].index)
     Genes = utils.get_range_gene_values(dst + 'genes_to_focus_infection.csv', transcriptomes, startval=0)
     titles = transcriptomes[Genes]
 
@@ -141,8 +139,6 @@ def main():
     if ratios is None:
         print('ERROR: ratios is None')
         return 0
-
-    print('Max ratio by {}:\t{:.2f}%'.format(normtype, 100*np.max(ratios) ) )
     jsonfiles = [ [ None for j in range(ratios.shape[1]) ] for i in range(ratios.shape[0]) ]
 
     for i in range(len(jsonfiles)):
@@ -187,8 +183,8 @@ def main():
     
     # # Persistence Images
 
-    pi_params = {'birth_range':(0,min([SCALE, maxbirth + sigma])),
-                 'pers_range':(0,min([SCALE,maxlife[:,:,focus_dim].max() + sigma])),
+    pi_params = {'birth_range':(0,min([SCALE, int(np.ceil(maxbirth + sigma))] )),
+                 'pers_range':(0,min([SCALE, int(np.ceil(maxlife[:,:,focus_dim].max()+sigma))])),
                  'pixel_size': pixel_size,
                  'weight': 'persistence',
                  'weight_params': {'n': pers_w},
@@ -197,7 +193,6 @@ def main():
                                
     pimgr = persim.PersistenceImager(**pi_params)
     extent = np.array([ pimgr.birth_range[0], pimgr.birth_range[1], pimgr.pers_range[0], pimgr.pers_range[1] ]).astype(int)
-    
     bname = 'scale{}_-_PI_{}_{}_{}_'.format(SCALE, sigma, pers_w, pixel_size)
     foo = [bw, stepsize, level.title(), normtype.title(), sigma, pers_w]
     Bname = 'KDE bandwidth {}, stepsize {}. {}level persistence. {} normalized. PIs $\sigma = {}$. Weighted by $n^{{{}}}$.'.format(*foo)
@@ -266,7 +261,6 @@ def main():
     
     for perm in perms:
         
-        print(perm)
         xlabs = np.tile(np.arange(0, img.shape[2], img.shape[2]//3), len(perm))
         xticks = np.hstack([ np.arange(0, img.shape[2], xlabs[1]-xlabs[0]) + i*img.shape[2] for i in range(len(perm)) ])
         xlabs = xlabs.astype(str)
@@ -280,6 +274,7 @@ def main():
         scaler = preprocessing.StandardScaler(copy=True, with_std=False, with_mean=True)
         data = scaler.fit_transform(full_pi[maxmask].copy())
         fulldata = scaler.transform(full_pi)
+        print(perm, data.shape, fulldata.shape)
         
         ## PCA
     

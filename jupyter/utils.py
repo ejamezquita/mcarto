@@ -200,7 +200,7 @@ def celllocs_read(filename):
 
 def match_original_ndimage(celllocs, wall, label, cellnum):
     cnuclei = np.asarray(ndimage.center_of_mass(wall, label, range(1,cellnum+1)))
-    dcoords = celllocs.iloc[:, 1:3].values
+    dcoords = celllocs.loc[:, ['X.location', 'Y.location']].values
     cdist = spatial.distance.cdist(np.flip(cnuclei, axis=1), dcoords, metric='euclidean')
     argmatches = np.argmin(cdist, axis=1)
     matches = np.min(cdist, axis=1)
