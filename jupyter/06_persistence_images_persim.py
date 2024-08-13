@@ -111,7 +111,6 @@ def main():
     bw = args.bandwidth
     stepsize = args.stepsize
     SCALE = args.scale
-    bsummary = pd.DataFrame()
 
     wsrc = '..' + os.sep + args.cell_wall_directory + os.sep
     nsrc = '..' + os.sep + args.nuclear_directory + os.sep
@@ -145,13 +144,14 @@ def main():
         foo = '{}{}/{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'
         for j in range(len(jsonfiles[0])):
             filename = foo.format(gsrc, transcriptomes[Genes[i]],transcriptomes[Genes[i]],level,PP,stepsize,bw,Cells[j])
-            if os.path.isfile(filename):
+            if os.path.isfile(filename+'.png'):
                 jsonfiles[i][j] = filename
 
     orig_diags = [ utils.get_diagrams(jsonfiles[i], ndims, remove_inf=True) for i in range(len(jsonfiles))]
     orig_diags, rescale, maxlife, focus_dim = utils.normalize_persistence_diagrams(orig_diags, ratios, normtype, SCALE)
     lt_mask = np.any(maxlife > minlife, axis=2)
     gmask, cmask = np.nonzero(lt_mask)
+    bsummary = pd.DataFrame()
     bsummary['gene_ID'] = Genes[gmask]
     bsummary['ndimage_ID'] = Cells[cmask]
     uq , cts = np.unique(gmask, return_counts=True)
@@ -214,7 +214,7 @@ def main():
     thr = np.max(qq[:,:,1] + iqr_factor*(qq[:,:,1] - qq[:,:,0]), axis=1)
     
     filename = tdst + bname + 'average_PI'
-    if rewrite or (not os.path.isfile(filename)):
+    if rewrite or (not os.path.isfile(filename+'.png')):
         avg = np.zeros( (len(img), len(nzcumsum) - 1, pimgr.resolution[1], pimgr.resolution[0]))
         for k in range(len(avg)):
             for i in range(avg.shape[1]):
@@ -242,7 +242,7 @@ def main():
         plt.close()
     
     filename = tdst + bname + 'max_PI_val_boxplot'
-    if rewrite or (not os.path.isfile(filename)):
+    if rewrite or (not os.path.isfile(filename+'.png')):
         fig, ax = plt.subplots(1, len(thr), figsize=(12, 2*len(Genes)/3), sharex=True, sharey=True)
         ax = np.atleast_1d(ax).ravel(); 
         for k in range(len(ax)):
@@ -281,7 +281,7 @@ def main():
         method = 'PCA'
         filename = tdst + bname + method.lower() + '_' + pname + '.csv'
         
-        if rewrite or (not os.path.isfile(filename)):
+        if rewrite or (not os.path.isfile(filename+'.png')):
             
             PCA = decomposition.PCA(n_components=min([6, data.shape[1]//20]), random_state=seed)
             print('Considering the first', PCA.n_components,'PCs')
