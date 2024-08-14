@@ -267,7 +267,7 @@ def main():
         xlabs[xlabs == '0'] = [ '$H_{}$'.format(perm[i]) for i in range(len(perm)) ]
 
         pname = 'H' + '+'.join(perm.astype(str))
-        full_pi = np.hstack(pi[perm])
+        Pname = ' [$' + ' \\oplus '.join(['H_{}'.format(k) for k in perm]) + '$]'full_pi = np.hstack(pi[perm])
         maxmask = np.ones(len(full_pi), dtype=bool)
         maxmask[functools.reduce(np.union1d, [np.nonzero(maxpis[k] > thr[k])[0] for k in perm])] = False
 
@@ -319,8 +319,11 @@ def main():
             
             ###
             
-            fig, ax = plot_embedding(nzcumsum, titles, pca, '{} ({}) [{:.1f}, {:.1f} %]'.format(method, pname, *explained_ratio[:2]), nrows=nrows, ncols=ncols)
-            fig.suptitle(Bname)
+            fig, ax = plot_embedding(pca, 0.00, None, nrows=nrows, ncols=ncols)
+            fig.suptitle(Bname+Pname, fontsize=fs)
+            fig.supxlabel('PC 01 [{:.1f}%]'.format(explained_ratio[0]), fontsize=fs)
+            fig.supylabel('PC 02 [{:.1f}%]'.format(explained_ratio[1]), fontsize=fs)
+
             fig.tight_layout();
             filename = tdst + bname + method.lower() + '_' + pname
             plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
