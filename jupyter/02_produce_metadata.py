@@ -9,7 +9,12 @@ import utils
 
 PP = 0
 min_n_ratio = 0.05
-min_N_ratio = 0.75
+max_N_ratio = 0.75
+
+# The no. of nuclei in a cell is determined as the number of separate nuclei
+# connected components that lie inside the cell such each of these components
+# represent at least `min_n_ratio` of the total nuclear pixels inside the cell
+# AND `max_N_ratio` of these nuclei is inside the cell
 
 def main():
     
@@ -85,7 +90,7 @@ def main():
                   np.s_[max([1, meta.loc[cidx, 'x0'] - PP]) : min([wall.shape[1], meta.loc[cidx, 'x1'] + PP])])
             
             uq, ct = np.unique(lnuc[ss][(lnuc[ss] > 0) & (label[ss] == cidx)], return_counts=True)
-            number_nuclei[i] = np.sum( ( (ct/np.sum(ct)) > min_n_ratio ) & (ct/nuc_area[uq] > min_N_ratio) )
+            number_nuclei[i] = np.sum( ( (ct/np.sum(ct)) > min_n_ratio ) & (ct/nuc_area[uq] > max_N_ratio) )
         
         meta['number_nuclei'] = number_nuclei
         orig_com = np.round(dcoords[argmatches], 2)
