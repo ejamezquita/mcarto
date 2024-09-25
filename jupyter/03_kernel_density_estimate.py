@@ -1,8 +1,15 @@
+import os
+os.environ["OMP_NUM_THREADS"] = "1" # export OMP_NUM_THREADS=4
+os.environ["OPENBLAS_NUM_THREADS"] = "1" # export OPENBLAS_NUM_THREADS=4 
+os.environ["MKL_NUM_THREADS"] = "1" # export MKL_NUM_THREADS=6
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1" # export VECLIB_MAXIMUM_THREADS=4
+os.environ["NUMEXPR_NUM_THREADS"] = "1" # export NUMEXPR_NUM_THREADS=6
+
+
 import numpy as np
 import pandas as pd
 import tifffile as tf
 from glob import glob
-import os
 from scipy import ndimage, stats
 
 import gudhi as gd
@@ -16,7 +23,7 @@ pows2 = 2**np.arange(20) + 1
 PP = 6
 pp = 0
 levelnum = 2
-BW = [15,20,25]
+BW = [10,15,20,25,30]
 
 def main():
     
@@ -115,6 +122,7 @@ def main():
         
         weight = 2-(wv*wh)
         np.save(filename, weight)
+        print('Saved',filename)
 
     weight = np.load(filename, allow_pickle=True)
 

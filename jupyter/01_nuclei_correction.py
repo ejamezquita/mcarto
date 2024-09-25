@@ -1,8 +1,15 @@
+import os
+os.environ["OMP_NUM_THREADS"] = "1" # export OMP_NUM_THREADS=4
+os.environ["OPENBLAS_NUM_THREADS"] = "1" # export OPENBLAS_NUM_THREADS=4 
+os.environ["MKL_NUM_THREADS"] = "1" # export MKL_NUM_THREADS=6
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1" # export VECLIB_MAXIMUM_THREADS=4
+os.environ["NUMEXPR_NUM_THREADS"] = "1" # export NUMEXPR_NUM_THREADS=6
+
+
 import numpy as np
 import pandas as pd
 import tifffile as tf
 from glob import glob
-import os
 
 from scipy import ndimage
 from sklearn import neighbors
@@ -64,25 +71,34 @@ def main():
     label, cellnum = ndimage.label(wall, struc1)
     print('Detected',cellnum,'cells')
 
-    filename = csrc + sample + '_data' + os.sep + '32771-slide1_' + sample + '_results.txt'
-    data = pd.read_csv(filename, header=None, sep='\t').drop(columns=[4])
-    foo = len(data)
-    print('Originally found', len(data), 'total transcripts')
-    data.columns = ['X', 'Y', 'Z', 'T']
-    data = data.loc[ ~nuclei[data['Y'], data['X']] ]
-    print('Reduced to', len(data), 'after removing those in nuclei [kept {:.02f}% of the originals]'.format(len(data)/foo*100) )
+    filenames = sorted(glob('../Bacteria Info for Erik/*.txt'))
 
-    transcriptomes, invidx, tsize = np.unique(data.iloc[:,-1], return_index = False, return_inverse=True, return_counts=True) 
+    transcriptomes = [ None for _ in range(len(filenames)) ]
+    translocs = [ None for _ in range(len(filenames)) ]
+
+    for i in range(len(filenames)):
+        transcriptomes[i] = os.path.splitext(os.path.split(filenames[i])[1])[0]
+        translocs[i] = pd.read_csv(filenames[i], sep='\t')
+
+    transcriptomes = np.asarray(transcriptomes)
     print(len(transcriptomes), 'transcriptomes')
+    
+    data = pd.concat(translocs)
+    foo = len(data)
+    data = data[data['L'] == 'c'].drop(columns='L')
+    print('Reduced to', len(data), 'after removing those in nuclei [kept {:.02f}% of the originals]'.format(len(data)/foo*100) )
 
     for tidx in range(len(transcriptomes)):
         
         filename =  dst + 'location_corrected_' + sample +'_-_' + transcriptomes[tidx] + '.csv'
         if rewrite or (not os.path.isfile(filename)):
             print('----', tidx, ' : \t', transcriptomes[tidx], ':\n')
-            coords = data.loc[invidx == tidx , ['X', 'Y', 'Z'] ].values.T
-            tlabs = label[coords[1], coords[0] ].astype(int)
+            
+            coords = translocs[tidx].loc[ translocs[tidx]['L'] == 'c' , ['X', 'Y', 'Z'] ].values.T
+            tlabs = label[ coords[1], coords[0] ].astype(int)
             tpercell, _ = np.histogram(tlabs, np.arange(cellnum+2))
+            foo = [ len(translocs[tidx]), coords.shape[1], 100*coords.shape[1]/len(translocs[tidx]) ]
+            print('Originally {} transcripts. Reduced to {} cytosolics [{:.2f}%]'.format(*foo))
             
             # # Deal with transcripts on the edge
 
@@ -117,13 +133,13 @@ def main():
                 # # Save Results
 
                 coords[:, cdtmask] = cdtcoords
-                coords = coords[:, ~nuclei[coords[1], coords[0]]]
                     
                 print('Saved file', filename,'\n')
                 df = pd.DataFrame(coords.T)
                 df.to_csv(filename, header=False, index=False)
+            
             else:
-                df= pd.DataFrame()
+                df = translocs[tidx].loc[ translocs[tidx]['L'] == 'c' , ['X', 'Y', 'Z'] ]
                 df.to_csv(filename, header=False, index=False)
                 
     return 0

@@ -34,12 +34,15 @@ def get_range_cell_values(arginput=None, meta=None, startval=0):
         Vals = [int(arginput)]
     elif os.path.isfile(arginput):
         focus = pd.read_csv(arginput)
-        if 'ndimage_ID' in focus.columns:
-            Vals = focus['ndimage_ID'].values
-        else:
+        if 'ndimage_cellID' in focus.columns:
+            Vals = focus['ndimage_cellID'].values
+        elif 'orig_cellID' in focus.columns:
             Vals = np.zeros(len(focus), dtype=int)
-            for i in range(len(cid)):
-                Vals[i] = meta[meta['orig_cellID'] == focus.iloc[i,0]].index[0]
+            for i in range(len(Vals)):
+                Vals[i] = meta[meta['orig_cellID'] == focus.iloc[i]['orig_cellID']].index[0]
+        else:
+            Vals = None
+            print('ERROR: Unable to choose cell ID values from input')
     else:
         Vals = None
         print('ERROR: Unable to choose cell ID values from input')
@@ -58,7 +61,7 @@ def get_range_gene_values(arginput=None, meta=None, startval=0):
             Vals = focus['gene_ID'].values
         else:
             Vals = np.zeros(len(focus), dtype=int)
-            for i in range(len(cid)):
+            for i in range(len(Vals)):
                 Vals[i] = np.nonzero(meta == focus.iloc[i,0])[0][0]
     else:
         Vals = None
@@ -154,7 +157,7 @@ def get_neighbor_data(nidxs, indexing, minneighs, cdtlabs, cdtmask, cdtcoords, e
 
     for i in indexing:
         foo, bar = np.unique(cdtlabs[nidxs[i][1:]], return_counts=True)
-        if len(foo) > 1:
+        if (len(foo) > 1) or ( (len(foo) == 1) & (cat[i,1] != cdtlabs[edtvals[i]]) ):
             cts = bar/np.sum(bar)
             
             cat[i,0] = len(foo)
@@ -174,7 +177,7 @@ def correct_shifted_transcripts(cdtlabs, cdtmask, cdtcoords, edtmask, edtvals, l
 
     cat = get_neighbor_data(nidxs, indexing, minneighs, cdtlabs, cdtmask, cdtcoords, edtmask, edtvals)
     
-    indexing = np.nonzero((cat[:,2] == 1) & (cat[:,3] > 70))[0]
+    indexing = np.nonzero((cat[:,2] == 1) & (cat[:,3] > minprob))[0]
     for i in indexing:
         shift = transcript_shift(i, ndist, nidxs, cat, cdtlabs, cdtmask, cdtcoords, edtmask, edtvals, label, radius)
         if shift[2]:
@@ -485,3 +488,24 @@ def maximum_qq_size(arr, max_thr=None, alpha=0.15, iqr_factor=1.25, ignore=None)
     q1, q3 = np.quantile(foo, [alpha, 1-alpha])
     
     return min([q3 + iqr_factor*(q3 - q1) , max_thr])
+
+def cardinal_distance_transform(img):
+    PAD = 1
+    pss = np.s_[PAD:-PAD,PAD:-PAD]
+    pad = np.pad(img, PAD, constant_values=0)
+    initd = np.full(pad.shape, max(pad.shape)+1, dtype=int)
+    initd[~pad] = 0
+    left = np.copy(initd)
+    for j in range(1,pad.shape[1]):
+        left[:, j] = np.minimum(left[:, j], left[:, j-1] + 1)
+    right = np.copy(initd)
+    for j in range(pad.shape[1]-2, -1, -1):
+        right[:, j] = np.minimum(right[:, j], right[:, j+1] + 1)
+    bottom = np.copy(initd)
+    for j in range(1,pad.shape[0]):
+        bottom[j] = np.minimum(bottom[j], bottom[j-1] + 1)
+    top = np.copy(initd)
+    for j in range(pad.shape[0]-2, -1, -1):
+        top[j] = np.minimum(top[j], top[j+1] + 1)
+
+    return top[pss], right[pss], bottom[pss], left[pss]

@@ -1,15 +1,22 @@
+import os
+os.environ["OMP_NUM_THREADS"] = "1" # export OMP_NUM_THREADS=4
+os.environ["OPENBLAS_NUM_THREADS"] = "1" # export OPENBLAS_NUM_THREADS=4 
+os.environ["MKL_NUM_THREADS"] = "1" # export MKL_NUM_THREADS=6
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1" # export VECLIB_MAXIMUM_THREADS=4
+os.environ["NUMEXPR_NUM_THREADS"] = "1" # export NUMEXPR_NUM_THREADS=6
+
+
 import numpy as np
 import pandas as pd
 import tifffile as tf
 from glob import glob
-import os
 from scipy import ndimage, spatial
 import argparse
 import utils
 
 PP = 0
 min_n_ratio = 0.05
-max_N_ratio = 0.75
+max_N_ratio = 0.55
 
 # The no. of nuclei in a cell is determined as the number of separate nuclei
 # connected components that lie inside the cell such each of these components
