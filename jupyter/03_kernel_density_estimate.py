@@ -22,7 +22,6 @@ import utils
 pows2 = 2**np.arange(20) + 1
 PP = 6
 pp = 0
-levelnum = 2
 BW = [10,15,20,25,30]
 
 def main():
@@ -153,7 +152,7 @@ def main():
                 w = weight[tcumsum[tidx]:tcumsum[tidx+1]][cmask]
                 foo = glob('..' + os.sep + '*level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep + '*c{:06d}.json'.format(cidx))
                 
-                if rewrite or ( len(foo) != levelnum ):
+                if rewrite or ( len(foo) != len(Levels)*len(BW) ):
             
                     ccoords = coords[:, cmask ].copy()
                     # # Compute, crop, and correct the KDE
