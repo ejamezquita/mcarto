@@ -267,7 +267,8 @@ def main():
         xlabs[xlabs == '0'] = [ '$H_{}$'.format(perm[i]) for i in range(len(perm)) ]
 
         pname = 'H' + '+'.join(perm.astype(str))
-        Pname = ' [$' + ' \\oplus '.join(['H_{}'.format(k) for k in perm]) + '$]'full_pi = np.hstack(pi[perm])
+        Pname = ' [$' + ' \\oplus '.join(['H_{}'.format(k) for k in perm]) + '$]'
+        full_pi = np.hstack(pi[perm])
         maxmask = np.ones(len(full_pi), dtype=bool)
         maxmask[functools.reduce(np.union1d, [np.nonzero(maxpis[k] > thr[k])[0] for k in perm])] = False
 
