@@ -22,7 +22,7 @@ import utils
 pows2 = 2**np.arange(20) + 1
 PP = 6
 pp = 0
-BW = [10,15,20,25,30]
+BW = [15,20,25]
 
 def main():
     
@@ -73,7 +73,8 @@ def main():
 
     metacell = pd.read_csv(ksrc + sample + '_cells_metadata.csv', index_col = 0)
     metatrans = pd.read_csv(ksrc + sample + '_transcripts_metadata.csv')
-    transcell = pd.read_csv(ksrc + sample + '_transcells_metadata.csv')
+    transcell = pd.read_csv(ksrc + sample + '_transcells_metadata.csv', index_col=-1)
+    cell_nuc = pd.read_csv(ksrc + sample + '_nuclei_limits.csv')
     transcriptomes = np.asarray(metatrans['gene'])
 
     Cells = utils.get_range_cell_values(args.cell_focus, metacell, startval=1)
@@ -85,7 +86,7 @@ def main():
         return 0
     
     tcumsum = np.hstack(([0], np.cumsum(metatrans['cyto_number'].values)))
-    translocs = [None for i in range(len(transcriptomes))]
+    translocs = [None for _ in range(len(transcriptomes))]
     for i in range(len(transcriptomes)):
         filename = tsrc + sample + os.sep + 'location_corrected_D2_-_' + transcriptomes[i] + '.csv'
         translocs[i] = pd.read_csv(filename, header=None, names=['X', 'Y', 'Z'])
@@ -96,34 +97,17 @@ def main():
         dst = '..' + os.sep + level + 'level' + os.sep + sample + os.sep
         if not os.path.isdir(dst):
             os.mkdir(dst)
-        for i in range(len(transcriptomes)):
-            tdst = dst + transcriptomes[i] + os.sep
+        for i in range(len(Genes)):
+            tdst = dst + transcriptomes[Genes[i]] + os.sep
             if not os.path.isdir(tdst):
                 os.mkdir(tdst)
                 
     wall = tf.imread(wsrc + sample + '_dams.tif').astype(bool)
     label, cellnum = ndimage.label(wall, ndimage.generate_binary_structure(2,1))
-
-    wall[tf.imread(nsrc + sample + '_EDT.tif') < args.nuclei_mask_cutoff] = False
     print('Detected',cellnum,'cells')
-
-    # # Compute transcript weights for KDE
-
-    filename = ksrc + sample + '_border_weights.npy'
-
-    if not os.path.isfile(filename):
-        top, right, bottom, left = utils.cardinal_distance_transform(wall)
-        wv = stats.norm.cdf(top[tlocs['Y'].values, tlocs['X'].values]+pp, loc=0, scale=bw)
-        wv-= stats.norm.cdf(-bottom[tlocs['Y'].values, tlocs['X'].values]-pp, loc=0, scale=bw)
-        
-        wh = stats.norm.cdf(right[tlocs['Y'].values, tlocs['X'].values]+pp, loc=0, scale=bw) 
-        wh-= stats.norm.cdf(-left[tlocs['Y'].values, tlocs['X'].values]-pp, loc=0, scale=bw)
-        
-        weight = 2-(wv*wh)
-        np.save(filename, weight)
-        print('Saved',filename)
-
-    weight = np.load(filename, allow_pickle=True)
+    
+    lnuc, nnuc = ndimage.label(tf.imread(nsrc + sample + '_EDT.tif') < args.nuclei_mask_cutoff, ndimage.generate_binary_structure(2,1))
+    print('Detected',nnuc,'nuclei')
 
     # # Select a cell and then a gene
 
@@ -132,37 +116,60 @@ def main():
         s_ = (np.s_[max([0, metacell.loc[cidx, 'y0'] - PP]) : min([wall.shape[0], metacell.loc[cidx, 'y1'] + PP])],
               np.s_[max([1, metacell.loc[cidx, 'x0'] - PP]) : min([wall.shape[1], metacell.loc[cidx, 'x1'] + PP])])
         extent = (s_[1].start, s_[1].stop, s_[0].start, s_[0].stop)
-        cell = wall[s_].copy().astype(np.uint8)
-        cell[ label[s_] == cidx ] = 2
-        cell[~wall[s_]] = 0
-        maxdims = ( cell.shape[1], cell.shape[0], zmax )
+
+
+        cell = wall[s_].copy().astype(int) - 1
+        cell[ label[s_] == cidx ] = nnuc + 1
+        cell[ lnuc[s_] > 0 ] = lnuc[s_][lnuc[s_] > 0]
+
+        maxdims = ( cell.shape[1], cell.shape[0], zmax) 
         axes, grid, gmask = utils.kde_grid_generator(stepsize=stepsize, maxdims=maxdims, pows2 = pows2, pad=1.5)
-        grid[:, :2] = grid[:, :2] + np.array([ extent[0], extent[2] ])
+        grid[:, :2] = grid[:, :2] + np.array([s_[1].start, s_[0].start])
         
         cgrid = grid[gmask].copy()
-        cgrid[:,:2] = grid[gmask][:,:2] - np.array([ extent[0], extent[2] ])
-        cgridmask = cell[cgrid[:,1],cgrid[:,0]] != 2
+        cgrid[:,:2] = grid[gmask][:,:2] - np.array([s_[1].start, s_[0].start])
+
+        nuc_lims = cell_nuc.loc[ (cell_nuc['ndimage_ID'] == cidx), ['ndimage_ID','nuc_ID','N_inside','n_bot','n_top']]
+        outside_walls = cell[cgrid[:,1],cgrid[:,0]] < 1
+
+        for j in range(len(nuc_lims)):
+            _, nidx, N_inside, n_bot, n_top = nuc_lims.iloc[j]
+            if n_bot < n_top:
+                thr_mask = (cgrid[:,2] >= n_bot) & (cgrid[:,2] <= n_top)
+            else:
+                thr_mask = (cgrid[:,2] <= n_top) | (cgrid[:,2] >= n_bot)
+
+            outside_walls |= ((cell[cgrid[:,1],cgrid[:,0]] == nidx) & thr_mask)
         
         for tidx in Genes:
 
             coords = translocs[tidx].values.T
             cmask = label[ coords[1], coords[0] ] == cidx
             
-            if np.sum(cmask) > 1:
-                w = weight[tcumsum[tidx]:tcumsum[tidx+1]][cmask]
-                foo = glob('..' + os.sep + '*level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep + '*c{:06d}.json'.format(cidx))
+            if np.sum(cmask) > 5:
+                all_files = True
                 
-                if rewrite or ( len(foo) != len(Levels)*len(BW) ):
+                for level in Levels:
+                    for bw in BW:
+                        filename = '..' + os.sep + '{}level'.format(level) + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep 
+                        filename +='{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(transcriptomes[tidx], level, PP, stepsize, bw, cidx)
+                        if not os.path.isfile(filename):
+                            all_files = False
+                            break
+                            
+                if rewrite | ~all_files:
             
                     ccoords = coords[:, cmask ].copy()
+                    
                     # # Compute, crop, and correct the KDE
                     
                     for bw in BW:
 
-                        kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(ccoords.T, w).evaluate(grid)
-                        kde = kde[gmask]/( np.sum(kde[gmask]) * (stepsize**len(coords)) )
-                        kde[ cgridmask ] = 0
-                        kde = kde/( np.sum(kde) * (stepsize**len(coords)) )
+                        kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(ccoords.T).evaluate(grid)
+                        kde = kde[gmask]/(np.sum(kde[gmask])*(stepsize**len(coords)))
+                        kde[outside_walls] = 0
+
+                        kde = kde/(np.sum(kde)*(stepsize**len(coords)))
                         kde = kde.reshape( list(map(len, axes))[::-1], order='F')
                         
                         # # Cubical persistence
