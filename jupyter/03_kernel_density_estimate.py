@@ -22,7 +22,7 @@ import utils
 pows2 = 2**np.arange(20) + 1
 PP = 6
 pp = 0
-BW = [15,20,25]
+BW = [10,15,20,25,30]
 
 def main():
     
@@ -113,76 +113,90 @@ def main():
 
     for cidx in Cells:
         
-        s_ = (np.s_[max([0, metacell.loc[cidx, 'y0'] - PP]) : min([wall.shape[0], metacell.loc[cidx, 'y1'] + PP])],
-              np.s_[max([1, metacell.loc[cidx, 'x0'] - PP]) : min([wall.shape[1], metacell.loc[cidx, 'x1'] + PP])])
-        extent = (s_[1].start, s_[1].stop, s_[0].start, s_[0].stop)
-
-
-        cell = wall[s_].copy().astype(int) - 1
-        cell[ label[s_] == cidx ] = nnuc + 1
-        cell[ lnuc[s_] > 0 ] = lnuc[s_][lnuc[s_] > 0]
-
-        maxdims = ( cell.shape[1], cell.shape[0], zmax) 
-        axes, grid, gmask = utils.kde_grid_generator(stepsize=stepsize, maxdims=maxdims, pows2 = pows2, pad=1.5)
-        grid[:, :2] = grid[:, :2] + np.array([s_[1].start, s_[0].start])
-        
-        cgrid = grid[gmask].copy()
-        cgrid[:,:2] = grid[gmask][:,:2] - np.array([s_[1].start, s_[0].start])
-
-        nuc_lims = cell_nuc.loc[ (cell_nuc['ndimage_ID'] == cidx), ['ndimage_ID','nuc_ID','N_inside','n_bot','n_top']]
-        outside_walls = cell[cgrid[:,1],cgrid[:,0]] < 1
-
-        for j in range(len(nuc_lims)):
-            _, nidx, N_inside, n_bot, n_top = nuc_lims.iloc[j]
-            if n_bot < n_top:
-                thr_mask = (cgrid[:,2] >= n_bot) & (cgrid[:,2] <= n_top)
-            else:
-                thr_mask = (cgrid[:,2] <= n_top) | (cgrid[:,2] >= n_bot)
-
-            outside_walls |= ((cell[cgrid[:,1],cgrid[:,0]] == nidx) & thr_mask)
-        
+        all_files = True
         for tidx in Genes:
-
-            coords = translocs[tidx].values.T
-            cmask = label[ coords[1], coords[0] ] == cidx
+            for level in Levels:
+                for bw in BW:
+                    filename = '..' + os.sep + '{}level'.format(level) + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep 
+                    filename +='{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(transcriptomes[tidx], level, PP, stepsize, bw, cidx)
+                    #print(filename, os.path.isfile(filename))
+                    if not os.path.isfile(filename):
+                        all_files = False
+                        break
+        
+        if rewrite or not all_files:
             
-            if np.sum(cmask) > 5:
-                all_files = True
+            s_ = (np.s_[max([0, metacell.loc[cidx, 'y0'] - PP]) : min([wall.shape[0], metacell.loc[cidx, 'y1'] + PP])],
+                  np.s_[max([1, metacell.loc[cidx, 'x0'] - PP]) : min([wall.shape[1], metacell.loc[cidx, 'x1'] + PP])])
+            extent = (s_[1].start, s_[1].stop, s_[0].start, s_[0].stop)
+
+
+            cell = wall[s_].copy().astype(int) - 1
+            cell[ label[s_] == cidx ] = nnuc + 1
+            cell[ lnuc[s_] > 0 ] = lnuc[s_][lnuc[s_] > 0]
+
+            maxdims = ( cell.shape[1], cell.shape[0], zmax) 
+            axes, grid, gmask = utils.kde_grid_generator(stepsize=stepsize, maxdims=maxdims, pows2 = pows2, pad=1.5)
+            grid[:, :2] = grid[:, :2] + np.array([s_[1].start, s_[0].start])
+            
+            cgrid = grid[gmask].copy()
+            cgrid[:,:2] = grid[gmask][:,:2] - np.array([s_[1].start, s_[0].start])
+
+            nuc_lims = cell_nuc.loc[ (cell_nuc['ndimage_ID'] == cidx), ['ndimage_ID','nuc_ID','N_inside','n_bot','n_top']]
+            outside_walls = cell[cgrid[:,1],cgrid[:,0]] < 1
+
+            for j in range(len(nuc_lims)):
+                _, nidx, N_inside, n_bot, n_top = nuc_lims.iloc[j]
+                if n_bot < n_top:
+                    thr_mask = (cgrid[:,2] >= n_bot) & (cgrid[:,2] <= n_top)
+                else:
+                    thr_mask = (cgrid[:,2] <= n_top) | (cgrid[:,2] >= n_bot)
+
+                outside_walls |= ((cell[cgrid[:,1],cgrid[:,0]] == nidx) & thr_mask)
+            
+            for tidx in Genes:
+
+                coords = translocs[tidx].values.T
+                cmask = label[ coords[1], coords[0] ] == cidx
                 
-                for level in Levels:
-                    for bw in BW:
-                        filename = '..' + os.sep + '{}level'.format(level) + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep 
-                        filename +='{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(transcriptomes[tidx], level, PP, stepsize, bw, cidx)
-                        if not os.path.isfile(filename):
-                            all_files = False
-                            break
-                            
-                if rewrite | ~all_files:
-            
-                    ccoords = coords[:, cmask ].copy()
+                if np.sum(cmask) > 5:
+                    all_files = True
                     
-                    # # Compute, crop, and correct the KDE
-                    
-                    for bw in BW:
-
-                        kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(ccoords.T).evaluate(grid)
-                        kde = kde[gmask]/(np.sum(kde[gmask])*(stepsize**len(coords)))
-                        kde[outside_walls] = 0
-
-                        kde = kde/(np.sum(kde)*(stepsize**len(coords)))
-                        kde = kde.reshape( list(map(len, axes))[::-1], order='F')
-                        
-                        # # Cubical persistence
-
-                        for level in Levels:
-                            tdst = '..' + os.sep + level + 'level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep
-                            filename = tdst + transcriptomes[tidx] + '_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(level,PP,stepsize,bw,cidx)
+                    for level in Levels:
+                        for bw in BW:
+                            filename = '..' + os.sep + '{}level'.format(level) + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep 
+                            filename +='{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(transcriptomes[tidx], level, PP, stepsize, bw, cidx)
+                            #print(filename, os.path.isfile(filename))
                             if not os.path.isfile(filename):
-                                cc = gd.CubicalComplex(top_dimensional_cells = utils.get_level_filtration(kde, level) )
-                                pers = cc.persistence(homology_coeff_field=2, min_persistence=1e-15)
-                                print(filename)
-                                with open(filename, 'w') as f:
-                                    json.dump(pers,f)
+                                all_files = False
+                                break
+                    
+                    if rewrite or not all_files:
+                
+                        ccoords = coords[:, cmask ].copy()
+                        
+                        # # Compute, crop, and correct the KDE
+                        
+                        for bw in BW:
+
+                            kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(ccoords.T).evaluate(grid)
+                            kde = kde[gmask]/(np.sum(kde[gmask])*(stepsize**len(coords)))
+                            kde[outside_walls] = 0
+
+                            kde = kde/(np.sum(kde)*(stepsize**len(coords)))
+                            kde = kde.reshape( list(map(len, axes))[::-1], order='F')
+                            
+                            # # Cubical persistence
+
+                            for level in Levels:
+                                tdst = '..' + os.sep + level + 'level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep
+                                filename = tdst + transcriptomes[tidx] + '_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(level,PP,stepsize,bw,cidx)
+                                if not os.path.isfile(filename):
+                                    cc = gd.CubicalComplex(top_dimensional_cells = utils.get_level_filtration(kde, level) )
+                                    pers = cc.persistence(homology_coeff_field=2, min_persistence=1e-15)
+                                    print(filename)
+                                    with open(filename, 'w') as f:
+                                        json.dump(pers,f)
 
     return 0
 

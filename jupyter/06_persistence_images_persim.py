@@ -34,7 +34,7 @@ pcacol = 3
 fs = 12
 
 perms = [np.nonzero(p)[0] for p in itertools.product(range(2), repeat=ndims)][1:]
-nrows, ncols = 2,3
+nrows, ncols = 1,2
 
 def plot_embedding(nzcumsum, titles, embedding, label=None, alpha=0.0, nrows=2, ncols=4, ticks=True):
     
@@ -138,16 +138,19 @@ def main():
     if ratios is None:
         print('ERROR: ratios is None')
         return 0
+    print('Max ratio by {}:\t{:.2f}%'.format(normtype, 100*np.max(ratios) ), np.sum(ratios > 0, axis=1) )
     jsonfiles = [ [ None for j in range(ratios.shape[1]) ] for i in range(ratios.shape[0]) ]
 
     for i in range(len(jsonfiles)):
         foo = '{}{}/{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'
         for j in range(len(jsonfiles[0])):
             filename = foo.format(gsrc, transcriptomes[Genes[i]],transcriptomes[Genes[i]],level,PP,stepsize,bw,Cells[j])
-            if os.path.isfile(filename+'.png'):
+            if os.path.isfile(filename):
                 jsonfiles[i][j] = filename
 
     orig_diags = [ utils.get_diagrams(jsonfiles[i], ndims, remove_inf=True) for i in range(len(jsonfiles))]
+    
+    
     orig_diags, rescale, maxlife, focus_dim = utils.normalize_persistence_diagrams(orig_diags, ratios, normtype, SCALE)
     lt_mask = np.any(maxlife > minlife, axis=2)
     gmask, cmask = np.nonzero(lt_mask)
@@ -290,6 +293,7 @@ def main():
             pca = PCA.transform(fulldata).astype('float32')
             loadings = PCA.components_.T * np.sqrt(PCA.explained_variance_)
             explained_ratio = 100*PCA.explained_variance_ratio_
+            print('{}\tTotal explained var:\t{:.2f} [{:.2f}]'.format(perm, np.sum(explained_ratio), np.sum(explained_ratio[:2])) )
             
             summary = bsummary.join(pd.DataFrame(pca, columns=['{}{:02d} ({:.2f})'.format(method,i+1,explained_ratio[i]) for i in range(pca.shape[1])]))
             summary.to_csv(filename, index=False)
@@ -320,7 +324,7 @@ def main():
             
             ###
             
-            fig, ax = plot_embedding(pca, 0.00, None, nrows=nrows, ncols=ncols)
+            fig, ax = plot_embedding(nzcumsum, titles, pca, alpha=0.00, label=None, nrows=nrows, ncols=ncols)
             fig.suptitle(Bname+Pname, fontsize=fs)
             fig.supxlabel('PC 01 [{:.1f}%]'.format(explained_ratio[0]), fontsize=fs)
             fig.supylabel('PC 02 [{:.1f}%]'.format(explained_ratio[1]), fontsize=fs)
