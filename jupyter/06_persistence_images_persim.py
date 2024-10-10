@@ -34,9 +34,11 @@ pcacol = 3
 fs = 12
 
 perms = [np.nonzero(p)[0] for p in itertools.product(range(2), repeat=ndims)][1:]
-nrows, ncols = 1,2
 
-def plot_embedding(nzcumsum, titles, embedding, label=None, alpha=0.0, nrows=2, ncols=4, ticks=True):
+perms = [ np.array([1,2]) ]
+
+nrows, ncols = 1,2
+def plot_embedding(nzcumsum, titles, embedding, label=None, alpha=0.0, nrows=nrows, ncols=ncols, ticks=True):
     
     q1, q3 = np.quantile(embedding[:,:2], [alpha, 1-alpha], axis=0)
     iqr = q3 - q1
@@ -77,9 +79,9 @@ def main():
                         help="filtration to use")
     parser.add_argument("norm_type", type=str, choices=['both','gene'],
                         help="how to normalize all the KDEs")
-    parser.add_argument("-c", "--scale", type=int, default=16,
+    parser.add_argument("-c", "--scale", type=int,
                         help="scaling factor for easier treatment")
-    parser.add_argument("-b", "--bandwidth", type=int, default=10,
+    parser.add_argument("-b", "--bandwidth", type=int,
                         help="KDE bandwidth")
     parser.add_argument("-z", "--stepsize", type=int, default=3,
                         help="KDE stepsize")
@@ -108,9 +110,17 @@ def main():
     sigma = args.sigma
     pers_w = args.pers_w
     pixel_size = args.pixel_size
-    bw = args.bandwidth
     stepsize = args.stepsize
-    SCALE = args.scale
+    
+    if args.scale is None:
+        SCALES = [16,24,32,40,48]
+    else:
+        SCALES = [args.scale]
+        
+    if args.bandwidth is None:
+        BW = [10,15,20,25,30]
+    else:
+        BW = [args.bandwidth]
 
     wsrc = '..' + os.sep + args.cell_wall_directory + os.sep
     nsrc = '..' + os.sep + args.nuclear_directory + os.sep
@@ -139,201 +149,202 @@ def main():
         print('ERROR: ratios is None')
         return 0
     print('Max ratio by {}:\t{:.2f}%'.format(normtype, 100*np.max(ratios) ), np.sum(ratios > 0, axis=1) )
-    jsonfiles = [ [ None for j in range(ratios.shape[1]) ] for i in range(ratios.shape[0]) ]
+    
+    for bw in BW:
+        
+        jsonfiles = [ [ None for j in range(ratios.shape[1]) ] for i in range(ratios.shape[0]) ]
+        for i in range(len(jsonfiles)):
+            foo = '{}{}/{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'
+            for j in range(len(jsonfiles[0])):
+                filename = foo.format(gsrc, transcriptomes[Genes[i]],transcriptomes[Genes[i]],level,PP,stepsize,bw,Cells[j])
+                if os.path.isfile(filename):
+                    jsonfiles[i][j] = filename
 
-    for i in range(len(jsonfiles)):
-        foo = '{}{}/{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'
-        for j in range(len(jsonfiles[0])):
-            filename = foo.format(gsrc, transcriptomes[Genes[i]],transcriptomes[Genes[i]],level,PP,stepsize,bw,Cells[j])
-            if os.path.isfile(filename):
-                jsonfiles[i][j] = filename
+        for SCALE in SCALES:
+            orig_diags = [ utils.get_diagrams(jsonfiles[i], ndims, remove_inf=True) for i in range(len(jsonfiles))]
+            orig_diags, rescale, maxlife, focus_dim = utils.normalize_persistence_diagrams(orig_diags, ratios, normtype, SCALE)
+            lt_mask = np.any(maxlife > minlife, axis=2)
+            gmask, cmask = np.nonzero(lt_mask)
+            bsummary = pd.DataFrame()
+            bsummary['gene_ID'] = Genes[gmask]
+            bsummary['ndimage_ID'] = Cells[cmask]
+            uq , cts = np.unique(gmask, return_counts=True)
+            nzcumsum = np.hstack(([0], np.cumsum(cts) ))
+            
+            if normtype == 'gene':
+                diags = [ [ [ rescale[i][0][0]*orig_diags[i][j][k].copy() for k in range(len(orig_diags[i][j])) ] for j in range(len(orig_diags[i])) ] for i in range(len(orig_diags)) ]
+            elif normtype == 'both':
+                diags = [ [ [ rescale*orig_diags[i][j][k].copy() for k in range(len(orig_diags[i][j])) ] for j in range(len(orig_diags[i])) ] for i in range(len(orig_diags)) ]
+            for i in range(len(diags)):
+                for j in range(len(diags[i])):
+                    for k in range(len(diags[i][j])):
+                        diags[i][j][k] = np.atleast_2d(diags[i][j][k][ diags[i][j][k][:,1] - diags[i][j][k][:,0] > minlife, : ])
 
-    orig_diags = [ utils.get_diagrams(jsonfiles[i], ndims, remove_inf=True) for i in range(len(jsonfiles))]
-    
-    
-    orig_diags, rescale, maxlife, focus_dim = utils.normalize_persistence_diagrams(orig_diags, ratios, normtype, SCALE)
-    lt_mask = np.any(maxlife > minlife, axis=2)
-    gmask, cmask = np.nonzero(lt_mask)
-    bsummary = pd.DataFrame()
-    bsummary['gene_ID'] = Genes[gmask]
-    bsummary['ndimage_ID'] = Cells[cmask]
-    uq , cts = np.unique(gmask, return_counts=True)
-    nzcumsum = np.hstack(([0], np.cumsum(cts) ))
-    
-    if normtype == 'gene':
-        diags = [ [ [ rescale[i][0][0]*orig_diags[i][j][k].copy() for k in range(len(orig_diags[i][j])) ] for j in range(len(orig_diags[i])) ] for i in range(len(orig_diags)) ]
-    elif normtype == 'both':
-        diags = [ [ [ rescale*orig_diags[i][j][k].copy() for k in range(len(orig_diags[i][j])) ] for j in range(len(orig_diags[i])) ] for i in range(len(orig_diags)) ]
-    for i in range(len(diags)):
-        for j in range(len(diags[i])):
-            for k in range(len(diags[i][j])):
-                diags[i][j][k] = np.atleast_2d(diags[i][j][k][ diags[i][j][k][:,1] - diags[i][j][k][:,0] > minlife, : ])
+            lt_coll = [ [None for _ in range(np.sum(lt_mask)) ] for _ in range(ndims) ]
+            for i in range(len(gmask)):
+                for k in range(len(lt_coll)):
+                    d = diags[gmask[i]][cmask[i]][k]
+                    lt_coll[k][i] = np.column_stack( (d[:, 0], d[:, 1] - d[:, 0])  )
 
-    lt_coll = [ [None for _ in range(np.sum(lt_mask)) ] for _ in range(ndims) ]
-    for i in range(len(gmask)):
-        for k in range(len(lt_coll)):
-            d = diags[gmask[i]][cmask[i]][k]
-            lt_coll[k][i] = np.column_stack( (d[:, 0], d[:, 1] - d[:, 0])  )
+            maxbirth = 0
+            for k in range(len(lt_coll)):
+                for i in range(len(lt_coll[k])):
+                    if len(lt_coll[k][i]) > 0:
+                        b = np.max(lt_coll[k][i][:,0])
+                        if b > maxbirth:
+                            maxbirth = b
+            
+            
+            # # Persistence Images
 
-    maxbirth = 0
-    for k in range(len(lt_coll)):
-        for i in range(len(lt_coll[k])):
-            if len(lt_coll[k][i]) > 0:
-                b = np.max(lt_coll[k][i][:,0])
-                if b > maxbirth:
-                    maxbirth = b
-    
-    
-    # # Persistence Images
+            pi_params = {'birth_range':(0,min([SCALE, int(np.ceil(maxbirth + sigma))] )),
+                         'pers_range':(0,min([SCALE, int(np.ceil(maxlife[:,:,focus_dim].max()+sigma))])),
+                         'pixel_size': pixel_size,
+                         'weight': 'persistence',
+                         'weight_params': {'n': pers_w},
+                         'kernel':'gaussian',
+                         'kernel_params':{'sigma': [[sigma, 0.0], [0.0, sigma]]} }
+                                       
+            pimgr = persim.PersistenceImager(**pi_params)
+            extent = np.array([ pimgr.birth_range[0], pimgr.birth_range[1], pimgr.pers_range[0], pimgr.pers_range[1] ]).astype(int)
+            bname = 'scale{}_-_PI_{}_{}_{}_'.format(SCALE, sigma, pers_w, pixel_size)
+            foo = [bw, stepsize, level.title(), normtype.title(), sigma, pers_w]
+            Bname = 'KDE bandwidth {}, stepsize {}. {}level persistence. {} normalized. PIs $\sigma = {}$. Weighted by $n^{{{}}}$.'.format(*foo)
+            tdst = dst + 'G{}_{}level_{}_step{}_bw{}'.format(len(Genes), level, normtype, stepsize, bw) + os.sep
+            if not os.path.isdir(tdst):
+                os.mkdir(tdst)
+                print(tdst)
+            
+            img = np.zeros((len(lt_coll), len(lt_coll[0]), extent[1], extent[3]))
+            for k in range(len(img)):
+                img[k] = np.asarray(pimgr.transform(lt_coll[k], skew=False))
+            img[img < 0] = 0
+            pi = np.zeros((img.shape[0], img.shape[1], img.shape[2]*img.shape[3]))
+            for k in range(len(pi)):
+                pi[k] = img[k].reshape(pi.shape[1], pi.shape[2])
+            maxpis = np.max(pi, axis=2)
+            boxes = [ [ maxpis[k, nzcumsum[i]:nzcumsum[i+1]] for i in range(len(nzcumsum)-1) ] for k in range(len(maxpis)) ]
+            qq = np.asarray([ [ np.quantile(boxes[k][i], [alpha, 1-alpha]) for i in range(len(boxes[k])) ] for k in range(len(boxes)) ])
+            thr = np.max(qq[:,:,1] + iqr_factor*(qq[:,:,1] - qq[:,:,0]), axis=1)
+            
+            filename = tdst + bname + 'average_PI'
+            if rewrite or (not os.path.isfile(filename+'.png')):
+                avg = np.zeros( (len(img), len(nzcumsum) - 1, pimgr.resolution[1], pimgr.resolution[0]))
+                for k in range(len(avg)):
+                    for i in range(avg.shape[1]):
+                        s_ = np.s_[nzcumsum[i]:nzcumsum[i+1]]
+                        avg[k,i] = np.mean(img[k,s_], axis=0).T
+                        
+                vmax = avg.max()
+                fig, ax = plt.subplots(len(avg), avg.shape[1], figsize=(2*avg.shape[1], 6), sharex=True, sharey=True)
 
-    pi_params = {'birth_range':(0,min([SCALE, int(np.ceil(maxbirth + sigma))] )),
-                 'pers_range':(0,min([SCALE, int(np.ceil(maxlife[:,:,focus_dim].max()+sigma))])),
-                 'pixel_size': pixel_size,
-                 'weight': 'persistence',
-                 'weight_params': {'n': pers_w},
-                 'kernel':'gaussian',
-                 'kernel_params':{'sigma': [[sigma, 0.0], [0.0, sigma]]} }
-                               
-    pimgr = persim.PersistenceImager(**pi_params)
-    extent = np.array([ pimgr.birth_range[0], pimgr.birth_range[1], pimgr.pers_range[0], pimgr.pers_range[1] ]).astype(int)
-    bname = 'scale{}_-_PI_{}_{}_{}_'.format(SCALE, sigma, pers_w, pixel_size)
-    foo = [bw, stepsize, level.title(), normtype.title(), sigma, pers_w]
-    Bname = 'KDE bandwidth {}, stepsize {}. {}level persistence. {} normalized. PIs $\sigma = {}$. Weighted by $n^{{{}}}$.'.format(*foo)
-    tdst = dst + 'G{}_{}level_{}_step{}_bw{}'.format(len(Genes), level, normtype, stepsize, bw) + os.sep
-    if not os.path.isdir(tdst):
-        os.mkdir(tdst)
-        print(tdst)
-    
-    img = np.zeros((len(lt_coll), len(lt_coll[0]), extent[1], extent[3]))
-    for k in range(len(img)):
-        img[k] = np.asarray(pimgr.transform(lt_coll[k], skew=False))
-    img[img < 0] = 0
-    pi = np.zeros((img.shape[0], img.shape[1], img.shape[2]*img.shape[3]))
-    for k in range(len(pi)):
-        pi[k] = img[k].reshape(pi.shape[1], pi.shape[2])
-    maxpis = np.max(pi, axis=2)
-    boxes = [ [ maxpis[k, nzcumsum[i]:nzcumsum[i+1]] for i in range(len(nzcumsum)-1) ] for k in range(len(maxpis)) ]
-    qq = np.asarray([ [ np.quantile(boxes[k][i], [alpha, 1-alpha]) for i in range(len(boxes[k])) ] for k in range(len(boxes)) ])
-    thr = np.max(qq[:,:,1] + iqr_factor*(qq[:,:,1] - qq[:,:,0]), axis=1)
-    
-    filename = tdst + bname + 'average_PI'
-    if rewrite or (not os.path.isfile(filename+'.png')):
-        avg = np.zeros( (len(img), len(nzcumsum) - 1, pimgr.resolution[1], pimgr.resolution[0]))
-        for k in range(len(avg)):
-            for i in range(avg.shape[1]):
-                s_ = np.s_[nzcumsum[i]:nzcumsum[i+1]]
-                avg[k,i] = np.mean(img[k,s_], axis=0).T
+                for k in range(avg.shape[0]):
+                    for i in range(len(nzcumsum)-1):
+                        ax[k,i].imshow(avg[k,i], cmap='inferno', origin='lower', vmin=0, vmax=vmax, extent=extent)
+                        ax[k,i].text((extent[1] - extent[0])*.95, (extent[3] - extent[2])*.95, 
+                                     'Max val:\n{:.2f}'.format(np.max(avg[k,i])), color='w', ha='right', va='top')
+                    ax[k,0].set_ylabel('$H_{}$'.format(k), fontsize=fs, rotation=0)
+                for i in range(avg.shape[1]):
+                    ax[0,i].set_title(transcriptomes[Genes[i]], fontsize=fs)
+
+                fig.supxlabel('Birth', y=.04, fontsize=fs); 
+                fig.supylabel('Lifetime', fontsize=fs)
+                fig.suptitle(Bname, fontsize=fs)
+
+                fig.tight_layout()
+                plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+                plt.close()
+            
+            filename = tdst + bname + 'max_PI_val_boxplot'
+            if rewrite or (not os.path.isfile(filename+'.png')):
+                fig, ax = plt.subplots(1, len(thr), figsize=(12, 2*len(Genes)/3), sharex=True, sharey=True)
+                ax = np.atleast_1d(ax).ravel(); 
+                for k in range(len(ax)):
+                    ax[k].axvline(thr[k], c='r', ls='--', zorder=1)
+                    ax[k].boxplot(boxes[k], vert=False, zorder=2, widths=0.75)
+                    ax[k].set_title('$H_{}$'.format(k), fontsize=fs)
+
+                ax[0].set_yticks(range(1, len(Genes)+1), transcriptomes[Genes], fontsize=fs)
+
+                fig.suptitle(Bname, fontsize=fs)
+                fig.supxlabel('Max PI value', fontsize=fs)
+                plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+                plt.close()
+            
+            # # Reduce dimension
+            
+            for perm in perms:
                 
-        vmax = avg.max()
-        fig, ax = plt.subplots(len(avg), avg.shape[1], figsize=(2*avg.shape[1], 6), sharex=True, sharey=True)
+                xlabs = np.tile(np.arange(0, img.shape[2], img.shape[2]//3), len(perm))
+                xticks = np.hstack([ np.arange(0, img.shape[2], xlabs[1]-xlabs[0]) + i*img.shape[2] for i in range(len(perm)) ])
+                xlabs = xlabs.astype(str)
+                xlabs[xlabs == '0'] = [ '$H_{}$'.format(perm[i]) for i in range(len(perm)) ]
 
-        for k in range(avg.shape[0]):
-            for i in range(len(nzcumsum)-1):
-                ax[k,i].imshow(avg[k,i], cmap='inferno', origin='lower', vmin=0, vmax=vmax, extent=extent)
-                ax[k,i].text((extent[1] - extent[0])*.95, (extent[3] - extent[2])*.95, 
-                             'Max val:\n{:.2f}'.format(np.max(avg[k,i])), color='w', ha='right', va='top')
-            ax[k,0].set_ylabel('$H_{}$'.format(k), fontsize=fs, rotation=0)
-        for i in range(avg.shape[1]):
-            ax[0,i].set_title(transcriptomes[Genes[i]], fontsize=fs)
+                pname = 'H' + '+'.join(perm.astype(str))
+                Pname = ' [$' + ' \\oplus '.join(['H_{}'.format(k) for k in perm]) + '$]'
+                full_pi = np.hstack(pi[perm])
+                maxmask = np.ones(len(full_pi), dtype=bool)
+                maxmask[functools.reduce(np.union1d, [np.nonzero(maxpis[k] > thr[k])[0] for k in perm])] = False
 
-        fig.supxlabel('Birth', y=.04, fontsize=fs); 
-        fig.supylabel('Lifetime', fontsize=fs)
-        fig.suptitle(Bname, fontsize=fs)
-
-        fig.tight_layout()
-        plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
-        plt.close()
-    
-    filename = tdst + bname + 'max_PI_val_boxplot'
-    if rewrite or (not os.path.isfile(filename+'.png')):
-        fig, ax = plt.subplots(1, len(thr), figsize=(12, 2*len(Genes)/3), sharex=True, sharey=True)
-        ax = np.atleast_1d(ax).ravel(); 
-        for k in range(len(ax)):
-            ax[k].axvline(thr[k], c='r', ls='--', zorder=1)
-            ax[k].boxplot(boxes[k], vert=False, zorder=2, widths=0.75)
-            ax[k].set_title('$H_{}$'.format(k), fontsize=fs)
-
-        ax[0].set_yticks(range(1, len(Genes)+1), transcriptomes[Genes], fontsize=fs)
-
-        fig.suptitle(Bname, fontsize=fs)
-        fig.supxlabel('Max PI value', fontsize=fs)
-        plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
-        plt.close()
-    
-    # # Reduce dimension
-    
-    for perm in perms:
-        
-        xlabs = np.tile(np.arange(0, img.shape[2], img.shape[2]//3), len(perm))
-        xticks = np.hstack([ np.arange(0, img.shape[2], xlabs[1]-xlabs[0]) + i*img.shape[2] for i in range(len(perm)) ])
-        xlabs = xlabs.astype(str)
-        xlabs[xlabs == '0'] = [ '$H_{}$'.format(perm[i]) for i in range(len(perm)) ]
-
-        pname = 'H' + '+'.join(perm.astype(str))
-        Pname = ' [$' + ' \\oplus '.join(['H_{}'.format(k) for k in perm]) + '$]'
-        full_pi = np.hstack(pi[perm])
-        maxmask = np.ones(len(full_pi), dtype=bool)
-        maxmask[functools.reduce(np.union1d, [np.nonzero(maxpis[k] > thr[k])[0] for k in perm])] = False
-
-        scaler = preprocessing.StandardScaler(copy=True, with_std=False, with_mean=True)
-        data = scaler.fit_transform(full_pi[maxmask].copy())
-        fulldata = scaler.transform(full_pi)
-        print(perm, data.shape, fulldata.shape)
-        
-        ## PCA
-    
-        method = 'PCA'
-        filename = tdst + bname + method.lower() + '_' + pname + '.csv'
-        
-        if rewrite or (not os.path.isfile(filename+'.png')):
+                scaler = preprocessing.StandardScaler(copy=True, with_std=False, with_mean=True)
+                data = scaler.fit_transform(full_pi[maxmask].copy())
+                fulldata = scaler.transform(full_pi)
+                print(perm, data.shape, fulldata.shape)
+                
+                ## PCA
             
-            PCA = decomposition.PCA(n_components=min([6, data.shape[1]//20]), random_state=seed)
-            print('Considering the first', PCA.n_components,'PCs')
-            PCA.fit(data)
-            pca = PCA.transform(fulldata).astype('float32')
-            loadings = PCA.components_.T * np.sqrt(PCA.explained_variance_)
-            explained_ratio = 100*PCA.explained_variance_ratio_
-            print('{}\tTotal explained var:\t{:.2f} [{:.2f}]'.format(perm, np.sum(explained_ratio), np.sum(explained_ratio[:2])) )
-            
-            summary = bsummary.join(pd.DataFrame(pca, columns=['{}{:02d} ({:.2f})'.format(method,i+1,explained_ratio[i]) for i in range(pca.shape[1])]))
-            summary.to_csv(filename, index=False)
-            
-            ###
-            
-            pcarow = np.where(pca.shape[1] % pcacol == 0, pca.shape[1]//pcacol, pca.shape[1]//pcacol + 1) + 0
-            fig, ax = plt.subplots(pcarow, pcacol, figsize=(10, 2.5*pcarow), sharex=True, sharey=True)
-            ax = np.atleast_1d(ax).ravel(); i = 0
-            for i in range(loadings.shape[1]):
-                ll = loadings[:,i].reshape( len(perm)*img.shape[2], img.shape[3], order='C').T
-                vmax = np.max(np.abs(ll))
-                ax[i].imshow(ll, cmap='coolwarm', vmax=vmax, vmin=-vmax, origin='lower')
-                ax[i].set_title('{} {:02d} ({:.2f}%)'.format(method, i+1, explained_ratio[i]), fontsize=fs)
-                for j in range(1, len(perm)):
-                    ax[i].axvline(j*img.shape[2] - .5, c='k', lw=0.5)
-                ax[i].set_xticks(xticks, xlabs, fontsize=fs)
+                method = 'PCA'
+                filename = tdst + bname + method.lower() + '_' + pname + '.csv'
+                
+                if rewrite or (not os.path.isfile(filename+'.png')):
+                    
+                    PCA = decomposition.PCA(n_components=min([6, data.shape[1]//20]), random_state=seed)
+                    print('Considering the first', PCA.n_components,'PCs')
+                    PCA.fit(data)
+                    pca = PCA.transform(fulldata).astype('float32')
+                    loadings = PCA.components_.T * np.sqrt(PCA.explained_variance_)
+                    explained_ratio = 100*PCA.explained_variance_ratio_
+                    print('{}\tTotal explained var:\t{:.2f} [{:.2f}]'.format(perm, np.sum(explained_ratio), np.sum(explained_ratio[:2])) )
+                    
+                    summary = bsummary.join(pd.DataFrame(pca, columns=['{}{:02d} ({:.2f})'.format(method,i+1,explained_ratio[i]) for i in range(pca.shape[1])]))
+                    summary.to_csv(filename, index=False)
+                    
+                    ###
+                    
+                    pcarow = np.where(pca.shape[1] % pcacol == 0, pca.shape[1]//pcacol, pca.shape[1]//pcacol + 1) + 0
+                    fig, ax = plt.subplots(pcarow, pcacol, figsize=(10, 2.5*pcarow), sharex=True, sharey=True)
+                    ax = np.atleast_1d(ax).ravel(); i = 0
+                    for i in range(loadings.shape[1]):
+                        ll = loadings[:,i].reshape( len(perm)*img.shape[2], img.shape[3], order='C').T
+                        vmax = np.max(np.abs(ll))
+                        ax[i].imshow(ll, cmap='coolwarm', vmax=vmax, vmin=-vmax, origin='lower')
+                        ax[i].set_title('{} {:02d} ({:.2f}%)'.format(method, i+1, explained_ratio[i]), fontsize=fs)
+                        for j in range(1, len(perm)):
+                            ax[i].axvline(j*img.shape[2] - .5, c='k', lw=0.5)
+                        ax[i].set_xticks(xticks, xlabs, fontsize=fs)
 
-            for i in range(loadings.shape[1], len(ax)):
-                fig.delaxes(ax[i])
-            fig.supxlabel('Birth', y=.04, fontsize=fs); 
-            fig.supylabel('Lifetime', fontsize=fs)
-            fig.suptitle(Bname, fontsize=fs)
-            fig.tight_layout();
-            filename = tdst + bname + method.lower() + '_' + pname +'_loadings'
-            plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
-            plt.close()
-            
-            ###
-            
-            fig, ax = plot_embedding(nzcumsum, titles, pca, alpha=0.00, label=None, nrows=nrows, ncols=ncols)
-            fig.suptitle(Bname+Pname, fontsize=fs)
-            fig.supxlabel('PC 01 [{:.1f}%]'.format(explained_ratio[0]), fontsize=fs)
-            fig.supylabel('PC 02 [{:.1f}%]'.format(explained_ratio[1]), fontsize=fs)
+                    for i in range(loadings.shape[1], len(ax)):
+                        fig.delaxes(ax[i])
+                    fig.supxlabel('Birth', y=.04, fontsize=fs); 
+                    fig.supylabel('Lifetime', fontsize=fs)
+                    fig.suptitle(Bname, fontsize=fs)
+                    fig.tight_layout();
+                    filename = tdst + bname + method.lower() + '_' + pname +'_loadings'
+                    plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+                    plt.close()
+                    
+                    ###
+                    
+                    fig, ax = plot_embedding(nzcumsum, titles, pca, alpha=0.00, label=None, nrows=nrows, ncols=ncols)
+                    fig.suptitle(Bname+Pname, fontsize=fs)
+                    fig.supxlabel('PC 01 [{:.1f}%]'.format(explained_ratio[0]), fontsize=fs)
+                    fig.supylabel('PC 02 [{:.1f}%]'.format(explained_ratio[1]), fontsize=fs)
 
-            fig.tight_layout();
-            filename = tdst + bname + method.lower() + '_' + pname
-            plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
-            plt.close()
-    
+                    fig.tight_layout();
+                    filename = tdst + bname + method.lower() + '_' + pname
+                    plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+                    plt.close()
+            
     return 0
 
 if __name__ == '__main__':

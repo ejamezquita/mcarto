@@ -69,16 +69,19 @@ def get_range_gene_values(arginput=None, meta=None, startval=0):
         
     return Vals
 
-def get_cell_img(cidx, metacell, wall, label, PP=10, pxbar=False):
-    s_ = (np.s_[max([0, metacell.loc[cidx, 'y0'] - PP]) : min([wall.shape[0], metacell.loc[cidx, 'y1'] + PP])],
-          np.s_[max([1, metacell.loc[cidx, 'x0'] - PP]) : min([wall.shape[1], metacell.loc[cidx, 'x1'] + PP])])
+def get_cell_img(cidx, metacell, label, lnuc, nnuc, PP=10, pxbar=False):
+    s_ = (np.s_[max([0, metacell.loc[cidx, 'y0'] - PP]) : min([label.shape[0], metacell.loc[cidx, 'y1'] + PP])],
+          np.s_[max([1, metacell.loc[cidx, 'x0'] - PP]) : min([label.shape[1], metacell.loc[cidx, 'x1'] + PP])])
     extent = (s_[1].start, s_[1].stop, s_[0].start, s_[0].stop)
-    cell = wall[s_].copy().astype(np.uint8)
-    cell[ label[s_] == cidx ] = 2
-    cell[~wall[s_]] = 0
+    
+    cell = label[s_].copy()
+    cell[ label[s_] > 0 ] = 0
+    cell[ label[s_] == cidx ] = nnuc + 1
+    cell[ lnuc[s_] > 0 ] = lnuc[s_][lnuc[s_] > 0]
+    cell[ label[s_] == 0 ] = -1
     
     if pxbar:
-        cell[pxbar] = 0
+        cell[pxbar] = -1
 
     return cell, extent
     
@@ -264,17 +267,28 @@ def kde_grid_generator(stepsize, maxdims, pows2 = pows2, pad=1.5):
 
     return axes, grid, mask
 
-def cell_grid_preparation(cell, extent, zmax, stepsize, pows2=pows2):
+def cell_grid_preparation(cidx, cell, extent, zmax, stepsize, cell_nuc, pows2=pows2):
     
     maxdims = ( cell.shape[1], cell.shape[0], zmax )
     axes, grid, gmask = kde_grid_generator(stepsize=stepsize, maxdims=maxdims, pows2 = pows2, pad=1.5)
     grid[:, :2] = grid[:, :2] + np.array([ extent[0], extent[2] ])
-    
     cgrid = grid[gmask].copy()
-    cgrid[:,:2] = grid[gmask][:,:2] - np.array([ extent[0], extent[2] ])
-    cgridmask = cell[cgrid[:,1],cgrid[:,0]] != 2
     
-    return axes, grid, gmask, cgrid, cgridmask
+    cgrid[:,:2] = grid[gmask][:,:2] - np.array([extent[0], extent[2]])
+
+    nuc_lims = cell_nuc.loc[ (cell_nuc['ndimage_ID'] == cidx), ['ndimage_ID','nuc_ID','N_inside','n_bot','n_top']]
+    outside_walls = cell[cgrid[:,1],cgrid[:,0]] < 1
+
+    for j in range(len(nuc_lims)):
+        _, nidx, N_inside, n_bot, n_top = nuc_lims.iloc[j]
+        if n_bot < n_top:
+            thr_mask = (cgrid[:,2] >= n_bot) & (cgrid[:,2] <= n_top)
+        else:
+            thr_mask = (cgrid[:,2] <= n_top) | (cgrid[:,2] >= n_bot)
+
+        outside_walls |= ((cell[cgrid[:,1],cgrid[:,0]] == nidx) & thr_mask)
+    
+    return axes, grid, gmask, cgrid, outside_walls
         
 def cell_weighted_kde(coords, grid, weights, bw, gmask, stepsize, cgridmask, axes):
 
