@@ -523,3 +523,12 @@ def cardinal_distance_transform(img):
         top[j] = np.minimum(top[j], top[j+1] + 1)
 
     return top[pss], right[pss], bottom[pss], left[pss]
+
+def signifscalar(scalar, limits=[1e-4,1e-3,1e-2]):
+    if scalar <= limits[0]:
+        return '***'
+    if scalar <= limits[1]:
+        return '**'
+    if scalar <= limits[2]:
+        return '*'
+    return 'n.s.'
