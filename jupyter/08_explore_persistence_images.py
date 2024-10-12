@@ -1,6 +1,7 @@
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
+from matplotlib.colors import ListedColormap
 import numpy as np
 import pandas as pd
 import argparse
@@ -39,15 +40,13 @@ order = 1
 hdims = np.array([1,2])
 steps = 1
 qq = 0.125
-ncol = 7
+
 pca_comparison = [ [0], [1], [0,1] ]
 ord_comparison = [1,2,np.inf]
 s = 50
 alphaNmax = 10
 alphaNmin = 0.1
 wong = ['#d81b60', '#b5b5b5', '#6b6b6b', '#000000']
-foo = [ wong[-1], wong[-2] ] + np.repeat(wong[1], nnuc).tolist() + ['#f0f0f0']
-cellular_cmap = ListedColormap(foo)
 GIDX = [0,1]
 normtype = 'both'
 
@@ -101,16 +100,8 @@ def main():
     pers_w = args.pers_w
     pixel_size = args.pixel_size
     stepsize = args.stepsize
-    
-    if args.scale is None:
-        SCALES = [16,24,32,40,48]
-    else:
-        SCALES = [args.scale]
-        
-    if args.bandwidth is None:
-        BW = [10,15,20,25,30]
-    else:
-        BW = [args.bandwidth]
+    SCALE = args.scale
+    bw = args.bandwidth
         
     wsrc = '..' + os.sep + args.cell_wall_directory + os.sep
     nsrc = '..' + os.sep + args.nuclear_directory + os.sep
@@ -142,11 +133,13 @@ def main():
     label, cellnum = ndimage.label(wall, ndimage.generate_binary_structure(2,1))
     print('Detected',cellnum,'cells')
 
-    lnuc, nnuc = ndimage.label(tf.imread(nsrc + sample + '_EDT.tif') < nuclei_mask_cutoff, ndimage.generate_binary_structure(2,1))
+    lnuc, nnuc = ndimage.label(tf.imread(nsrc + sample + '_EDT.tif') < args.nuclei_mask_cutoff, ndimage.generate_binary_structure(2,1))
     print('Detected',nnuc,'nuclei')
     wcoords = np.asarray(np.nonzero(~wall))
-    wallshape = wall.shape
     wc = wcoords[:, ~np.all(wcoords%100, axis=0)]
+    
+    foo = [ wong[-1], wong[-2] ] + np.repeat(wong[1], nnuc).tolist() + ['#f0f0f0']
+    cellular_cmap = ListedColormap(foo)
 
     translocs = [None for i in range(len(transcriptomes))]
     for i in range(len(transcriptomes)):
@@ -235,7 +228,7 @@ def main():
     embedding = pd.read_csv(csvfilename)
     pca = embedding.iloc[:,2:4].values
     foo = [bw, stepsize, level.title(), normtype.title(), sigma, pers_w]
-    Bname = 'KDE bandwidth {}. {}level persistence. PIs $\sigma = {}$. Weighted by $n^{{{}}}$.'.format(bw, level.title(), sigma, pers_w)
+    Bname = 'KDE bandwidth {}. {}level persistence. PIs {}$\\times${}.'.format(bw, level.title(), SCALE, SCALE)
     bname = 'scale{}_-_PI_{}_{}_{}_'.format(SCALE, sigma, pers_w, pixel_size)
 
     llim = int(np.floor(pca[:,0].min()))
@@ -441,7 +434,8 @@ def main():
                 ax[i].set_title(title[i], fontsize=fs)
                 ax[i].set_facecolor('snow')
                 ax[i].tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
-
+            
+            fig.suptitle(Bname, fontsize=1.25*fs)
             fig.tight_layout();
             print(filename)
             plt.savefig(filename, dpi=dpi, bbox_inches='tight', pil_kwargs={'optimize':True})
@@ -501,7 +495,7 @@ def main():
                     fig,ax = plt.subplots(4, N, figsize=(2*N,8), layout="constrained")
                     ax = np.atleast_1d(ax).ravel()
 
-                    fig.suptitle(transcriptomes[Genes[gidx]]+' : '+embedding.columns[2+pcnum]+Pname, fontsize=1.25*fs)
+                    fig.suptitle(transcriptomes[Genes[gidx]]+' : '+embedding.columns[2+pcnum]+Pname+' ('+Bname+')', fontsize=1.25*fs)
 
                     for i in range(2*N):
                         j = i
@@ -525,7 +519,7 @@ def main():
         
     # Look at differences
     
-    for gi,gj in GIDX:
+    for gi,gj in [GIDX]:
     
         merge = embedding[embedding['gene_ID'] == Genes[gi]]
         merge = merge.merge(embedding[embedding['gene_ID'] == Genes[gj]],how='inner', on = 'ndimage_ID', suffixes=['_{}'.format(i) for i in [gi,gj]])
@@ -552,15 +546,16 @@ def main():
                     
                 ax[it].scatter(pca_comp.iloc[:,0], pca_comp.iloc[:,1], c=diff, marker='o', cmap='plasma',
                                  edgecolor='black', linewidth=0.5, zorder=2, s=25, vmin=vmin, vmax=vmax, label=ll)
-                ax[it].legend(fontsize=fs, handlelength=0, handletextpad=0, loc='upper right', markerscale=0)
+                ax[it].legend(fontsize=fs, handlelength=0, handletextpad=0, loc='upper right', markerscale=0, facecolor='whitesmoke')
                 ax[it].set_facecolor('snow')
                 ax[it].tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
 
             fig.supxlabel(transcriptomes[Genes[gi]], fontsize=fs)
             fig.supylabel(transcriptomes[Genes[gj]], fontsize=fs)
-
+            fig.suptitle(Bname, fontsize=1.25*fs)
             fig.tight_layout();
             plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+            print(filename)
             plt.close()
         
         imi = [embedding[(embedding['ndimage_ID'] == i) & (embedding['gene_ID'] == Genes[gi])].index[0] for i in merge['ndimage_ID'] ]
@@ -608,17 +603,18 @@ def main():
                 expo = int(np.ceil(np.log10(corr.pvalue)))
                 ll = '$\\rho = ${:.2f}\npval $< 10^{{{}}}$'.format(corr.statistic, expo)
                 ax[k].scatter(diff, ecc, c=diff, cmap=Cmap, marker='o', edgecolor='black', linewidth=0.5, vmin=vmin, vmax=vmax, label=ll)
-                ax[k].legend(fontsize=fs, handlelength=0, handletextpad=0, loc='upper right', markerscale=0)
+                ax[k].legend(fontsize=fs, handlelength=0, handletextpad=0, loc='upper right', markerscale=0, facecolor='whitesmoke')
 
             for a in ax.ravel():
                 a.set_facecolor('snow')
                 a.tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
-
+            fig.suptitle(Bname, fontsize=1.25*fs)
             fig.tight_layout();
             print(filename)
             plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
             plt.close()
-            
+        
+        ncol = 6
         for dixd in range(3):
             
             diff = diffs[dixd]
@@ -674,14 +670,14 @@ def main():
                         ax[i].set_title('Cell ID: {}'.format(metacell.loc[embedding.loc[reps[i], 'ndimage_ID'], 'orig_cellID']), fontsize=fs)
                         ax[i+ncol].set_title('$\\tilde{\\rho}=$'+'{:.2f} | {:.2f}'.format(*density[[i,ncol+i]]), fontsize=fs)
                 for i in [0,2]:
-                    ax[ncol*i].set_ylabel(transcriptomes[Genes[i]], fontsize=12)
+                    ax[ncol*i].set_ylabel(transcriptomes[Genes[gi]], fontsize=12)
                 for i in [1,3]:
-                    ax[ncol*i].set_ylabel(transcriptomes[Genes[i]], fontsize=12)
+                    ax[ncol*i].set_ylabel(transcriptomes[Genes[gj]], fontsize=12)
 
                 for a in ax.ravel():
                     a.set_aspect('equal','datalim')
 
-                fig.suptitle(Bname[:39] + Pname + ' ['+title[dixd]+']', fontsize=fs)
+                fig.suptitle(Bname + Pname + ' ['+title[dixd]+']', fontsize=1.25*fs)
                 fig.tight_layout();
                 print(filename)
                 plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
@@ -691,9 +687,9 @@ def main():
                 ax = np.atleast_1d(ax).ravel();
 
                 for i in range(len(hcells)):
-                    fig.axes[i].imshow(hcells[i], cmap='binary_r', origin='lower', extent=hextent[i], vmin=0, vmax=2);
+                    fig.axes[i].imshow(hcells[i]+1, cmap=cellular_cmap, origin='lower', extent=hextent[i], vmin=0, vmax=nnuc+2);
                     fig.axes[i].scatter(*hcoords[i][:2], color=color[4*(i//(2*ncol))], marker='o', alpha=max([alphaNmin, min([1, alphaNmax/len(hcoords[i][0])])]), s=int(4e6/hcells[i].size))
-                    fig.axes[i].set_facecolor('#808080')
+                    fig.axes[i].set_facecolor(wong[2])
                     ax[i].tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
                     
                 for kstart, kend in [(0, ncol), (2*ncol, 3*ncol)]:
@@ -709,7 +705,7 @@ def main():
                 for a in ax.ravel():
                     a.set_aspect('equal','datalim')
 
-                fig.suptitle(Bname[:39] + Pname + ' ['+title[dixd]+']', fontsize=fs)
+                fig.suptitle(Bname + Pname + ' ['+title[dixd]+']', fontsize=1.25*fs)
                 fig.tight_layout();
                 filename = dsrc + bname + pname + '_{}_cell_{}_vs_{}'.format(ftitle[dixd], *transcriptomes[Genes[[gi,gj]]])
                 print(filename)
@@ -777,10 +773,10 @@ def main():
                             corr = stats.spearmanr(ecc[mask], pca[pmask, k][mask])
                             fivegdata[i, ct:ct+2] = [corr.statistic, corr.pvalue]
                             ct += 2
-            fivegdata = pd.DataFrame(fivegdata, columns=fivegcolumns).to_csv(filename, index=False)
+            fivegdata = pd.DataFrame(fivegdata, columns=fivegcolumns).to_csv(filename, index=False, header=False)
             print(filename)
 
-        fivegdata = pd.read_csv(filename)
+        fivegdata = pd.read_csv(filename, header=None, names=fivegcolumns)
         
         for min5G in range(4):
             Gname = ' {}$\geq${}.'.format(full_id_gene, 1+min5G)
@@ -817,7 +813,7 @@ def main():
                     fig.axes[2*i+2].set_xlabel(embedding.columns[2], fontsize=fs)
                     
                 fig.axes[3].set_ylabel(embedding.columns[3], fontsize=fs)
-                fig.suptitle(Bname[:39] + Gname + Pname , fontsize=1.28*fs)
+                fig.suptitle(Bname + Gname + Pname , fontsize=1.15*fs)
 
                 for i in range(len(fig.axes)):
                     fig.axes[i].set_facecolor('snow')
@@ -859,7 +855,7 @@ def main():
 
                 fig.supxlabel(transcriptomes[Genes[gi]], fontsize=1.28*fs)
                 fig.supylabel(transcriptomes[Genes[gj]], fontsize=1.28*fs)
-                fig.suptitle(Bname[:39] + Gname + Pname , fontsize=1.28*fs)
+                fig.suptitle(Bname + Gname + Pname , fontsize=1.28*fs)
 
                 fig.tight_layout();
                 plt.savefig(filename, dpi=dpi, bbox_inches='tight', format='png')
@@ -883,17 +879,18 @@ def main():
                             c = pca[pmask, k][mask]
 
                             corr = fivegdata.iloc[min5G, 36+2*ct]
-                            expo = signifscalar(fivegdata.iloc[min5G, 36+2*ct+1])
+                            expo = utils.signifscalar(fivegdata.iloc[min5G, 36+2*ct+1])
                             ct += 1
                             ll = '$\\rho = ${:.2f} [{}]'.format(corr, expo)
                             ax[it].scatter(c, ecc[mask], c=ecc[mask], cmap=Cmap, marker='o', edgecolor='black', linewidth=0.5, label=ll)
                             ax[it].legend(fontsize=fs, handlelength=0, handletextpad=0, loc='upper right', markerscale=0, framealpha=1, facecolor='whitesmoke')
                             ax[it].tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
 
-                fig.suptitle(Bname[:39] + Gname + Pname , fontsize=1.28*fs)
+                fig.suptitle(Bname + Gname + Pname , fontsize=1.28*fs)
 
                 fig.tight_layout();
                 plt.savefig(filename, dpi=dpi, bbox_inches='tight', format='png')
+                print(filename)
                 plt.close()
     return 0
 
