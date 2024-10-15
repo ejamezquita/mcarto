@@ -278,6 +278,9 @@ def cell_grid_preparation(cidx, cell, extent, zmax, stepsize, cell_nuc, pows2=po
 
     nuc_lims = cell_nuc.loc[ (cell_nuc['ndimage_ID'] == cidx), ['ndimage_ID','nuc_ID','N_inside','n_bot','n_top']]
     outside_walls = cell[cgrid[:,1],cgrid[:,0]] < 1
+    foo = np.setdiff1d( np.unique(cell), nuc_lims['nuc_ID'].values)[:-1]
+    for v in foo:
+        outside_walls |= cell[cgrid[:,1], cgrid[:,0]] == v
 
     for j in range(len(nuc_lims)):
         _, nidx, N_inside, n_bot, n_top = nuc_lims.iloc[j]
