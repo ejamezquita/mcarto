@@ -113,10 +113,10 @@ def main():
     ksrc += sample + os.sep
 
     metacell = pd.read_csv(ksrc + sample + '_cells_metadata.csv', index_col='ndimage_cellID')
+    metaecc = pd.read_csv(ksrc + sample + '_nodule_root_eccentricity.csv', index_col='ndimage_cellID')
     metatrans = pd.read_csv(ksrc + sample + '_transcripts_metadata.csv')
-    transcell = pd.read_csv(ksrc + sample + '_transcells_metadata.csv').set_index('gene')
+    transcell = pd.read_csv(ksrc + sample + '_transcells_metadata.csv', index_col='gene')
     cell_nuc = pd.read_csv(ksrc + sample + '_nuclei_limits.csv')
-    weight = np.load(ksrc + sample + '_border_weights.npy', allow_pickle=True)
     
     transcriptomes = np.asarray(list(metatrans['gene']))
     metatrans = metatrans.set_index('gene')
@@ -397,11 +397,10 @@ def main():
         pmask = embedding['gene_ID'] == Genes[gidx]
 
         cellloc = metacell.loc[ embedding.loc[pmask, 'ndimage_ID'], ['ndimage_comX','ndimage_comY','orig_cellID'] ].values
-        dists = spatial.distance.squareform(spatial.distance.pdist(cellloc[:,:2], metric='euclidean'), checks=False)
-        ecc = np.linalg.norm(dists, ord=1, axis=1)
-        ecc -= ecc.min()
+        ecc = metaecc.loc[embedding.loc[pmask, 'ndimage_ID'], 'eccentricity'].values
+        ecc = metaecc['eccentricity'].max() - ecc
         
-        filename = filename = dsrc + bname + pname + '_{}'.format(transcriptomes[Genes[gidx]])
+        filename = dsrc + bname + pname + '_{}'.format(transcriptomes[Genes[gidx]])
         if rewrite or (not os.path.isfile(filename+'.png')):
             fig, ax = plt.subplots(2, 1+pca.shape[1], figsize=(12,7), sharex=False, sharey=False)
             ax = np.atleast_1d(ax).ravel(); i = 0
@@ -440,87 +439,86 @@ def main():
             print(filename)
             plt.savefig(filename, dpi=dpi, bbox_inches='tight', pil_kwargs={'optimize':True})
             plt.close()
-            
         
-            for pcnum in range(pca.shape[1]):
-                
-                corr = stats.spearmanr(ecc, pca[pmask, pcnum]).statistic
-                arr = pca[pmask, pcnum] * np.sign(corr)
-                vmax = utils.maximum_qq_size(arr, alpha=0.25, iqr_factor=1.5)
-                vmin = utils.minimum_qq_size(arr, alpha=0.25, iqr_factor=1.5)
+        for pcnum in range(pca.shape[1]):
+            
+            corr = stats.spearmanr(ecc, pca[pmask, pcnum]).statistic
+            arr = pca[pmask, pcnum] * np.sign(corr)
+            vmax = utils.maximum_qq_size(arr, alpha=0.25, iqr_factor=1.5)
+            vmin = utils.minimum_qq_size(arr, alpha=0.25, iqr_factor=1.5)
 
-                # Examples of maxima and minima
-                
-                qq = 0.1
-                HQmask = []; LQmask = []
-                while (len(HQmask) < N) | (len(LQmask) < N ):
-                    hqmask = arr > np.quantile(arr, 1-qq)
-                    lqmask = arr < np.quantile(arr, qq)
-                    LQmask = np.intersect1d(np.nonzero(lqmask)[0], np.nonzero(ecc < np.quantile(ecc, qq))[0])
-                    HQmask = np.intersect1d(np.nonzero(hqmask)[0], np.nonzero(ecc > np.quantile(ecc, 1-qq))[0])
-                    qq += 0.01
+            # Examples of maxima and minima
+            
+            qq = 0.1
+            HQmask = []; LQmask = []
+            while (len(HQmask) < N) | (len(LQmask) < N ):
+                hqmask = arr > np.quantile(arr, 1-qq)
+                lqmask = arr < np.quantile(arr, qq)
+                LQmask = np.intersect1d(np.nonzero(lqmask)[0], np.nonzero(ecc < np.quantile(ecc, qq))[0])
+                HQmask = np.intersect1d(np.nonzero(hqmask)[0], np.nonzero(ecc > np.quantile(ecc, 1-qq))[0])
+                qq += 0.01
 
-                lq = rng.choice(LQmask, N, replace=False)
-                hq = rng.choice(HQmask, N, replace=False)
-                
-                orig_idx = cellloc[np.hstack((lq,hq)), 2].astype(int)
-                cyto_area = metacell.loc[embedding.loc[pmask].iloc[np.hstack((lq,hq))]['ndimage_ID'], 'cyto_area']
-                tnum = transcell.loc[transcriptomes[Genes[gidx]], embedding.loc[pmask].iloc[np.hstack((lq,hq))]['ndimage_ID'].values.astype(str)]
-                density = 1000*tnum.values/cyto_area.values
-                reps = embedding.loc[pmask].iloc[np.hstack((lq,hq))].index.values
+            lq = rng.choice(LQmask, N, replace=False)
+            hq = rng.choice(HQmask, N, replace=False)
+            
+            orig_idx = cellloc[np.hstack((lq,hq)), 2].astype(int)
+            cyto_area = metacell.loc[embedding.loc[pmask].iloc[np.hstack((lq,hq))]['ndimage_ID'], 'cyto_area']
+            tnum = transcell.loc[transcriptomes[Genes[gidx]], embedding.loc[pmask].iloc[np.hstack((lq,hq))]['ndimage_ID'].values.astype(str)]
+            density = 1000*tnum.values/cyto_area.values
+            reps = embedding.loc[pmask].iloc[np.hstack((lq,hq))].index.values
 
-                # Precompute KDEs
-                filename = dsrc + bname + pname + '_kde_pc{:02d}_{}'.format(pcnum+1, transcriptomes[Genes[gidx]])
-                if rewrite or (not os.path.isfile(filename+'.png')):
+            # Precompute KDEs
+            filename = dsrc + bname + pname + '_kde_pc{:02d}_{}'.format(pcnum+1, transcriptomes[Genes[gidx]])
+            if rewrite or (not os.path.isfile(filename+'.png')):
 
-                    KDE, hcells, hcoords, hextent, hzhist = [ [None for _ in range(len(reps))] for _ in range(5) ]
+                KDE, hcells, hcoords, hextent, hzhist = [ [None for _ in range(len(reps))] for _ in range(5) ]
 
-                    for i in range(len(KDE)):
-                        cidx = embedding.loc[reps[i], 'ndimage_ID']
-                        cmask = label[ translocs[ embedding.loc[reps[i], 'gene_ID']]['Y'], translocs[embedding.loc[reps[i], 'gene_ID']]['X'] ] == cidx
-                        hcoords[i] = translocs[embedding.loc[reps[i], 'gene_ID']].iloc[cmask].values.T
-                        hzhist[i], _ = np.histogram(hcoords[i][2], bins=zbins, density=True)
+                for i in range(len(KDE)):
+                    cidx = embedding.loc[reps[i], 'ndimage_ID']
+                    cmask = label[ translocs[ embedding.loc[reps[i], 'gene_ID']]['Y'], translocs[embedding.loc[reps[i], 'gene_ID']]['X'] ] == cidx
+                    hcoords[i] = translocs[embedding.loc[reps[i], 'gene_ID']].iloc[cmask].values.T
+                    hzhist[i], _ = np.histogram(hcoords[i][2], bins=zbins, density=True)
 
-                        hcells[i], hextent[i] = utils.get_cell_img(cidx, metacell, label, lnuc, nnuc, pxbar=False)
-                        
-                        axes, grid, kdegmask, cgrid, outside_walls = utils.cell_grid_preparation(cidx, hcells[i], hextent[i], zmax, stepsize, cell_nuc)
-                           
-                        kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(hcoords[i].T).evaluate(grid)
-                        kde = kde[kdegmask]/(np.sum(kde[kdegmask])*(stepsize**len(hcoords[i])))
-                        kde[outside_walls] = 0
-                        kde = kde/(np.sum(kde)*(stepsize**len(hcoords[i])))
-                        
-                        KDE[i] = kde.reshape( list(map(len, axes))[::-1], order='F')
-                        hcells[i][pxbar] = -1
-
-                    hkdes = [ KDE[i].copy() * ratios[invGenes[embedding.loc[reps[i], 'gene_ID']]][ invCells[embedding.loc[reps[i], 'ndimage_ID']] ] for i in range(len(KDE))]
-                    hzlevel = np.array(list(map(np.argmax, hzhist)))
-
-                    # Min-Max KDEs & Cells
-                    fig,ax = plt.subplots(4, N, figsize=(2*N,8), layout="constrained")
-                    ax = np.atleast_1d(ax).ravel()
-
-                    fig.suptitle(transcriptomes[Genes[gidx]]+' : '+embedding.columns[2+pcnum]+Pname+' ('+Bname+')', fontsize=1.25*fs)
-
-                    for i in range(2*N):
-                        j = i
-                        ax[j].imshow(hcells[i]+1, cmap=cellular_cmap, origin='lower', extent=hextent[i], vmin=0, vmax=nnuc+2);
-                        ax[j].scatter(hcoords[i][0], hcoords[i][1], color=color[4*((i)//N)], marker='o', s=int(4e6/hcells[i].size),
-                                           alpha=max([0.1, min([1, 25/len(hcoords[i][0])])]))
-                        ax[j].set_facecolor(wong[2])
-                        ax[j].set_title('ID: {} [N = {}]'.format(orig_idx[i], len(hcoords[i][0])), fontsize=fs)
-                        
-                        j = i+2*N
-                        ax[j].imshow(hkdes[i][hzlevel[i],:,:], origin='lower', cmap=cmap[4*((i)//N)], vmin=0, vmax=kmax)
-                        ax[j].set_facecolor( mpl.colormaps[ cmap[4*((i)//N)] ](0) )
-                        ax[j].set_title('ID: {} '.format(orig_idx[i]) + '[$\\tilde{\\rho}=$' + '{:.2f}]'.format(density[i]), fontsize=fs)
-                        
-                    for i in range(len(ax)):
-                        ax[i].set_aspect('equal', 'datalim')
-                        ax[i].tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
+                    hcells[i], hextent[i] = utils.get_cell_img(cidx, metacell, label, lnuc, nnuc, pxbar=False)
                     
-                    plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
-                    plt.close()
+                    axes, grid, kdegmask, cgrid, outside_walls = utils.cell_grid_preparation(cidx, hcells[i], hextent[i], zmax, stepsize, cell_nuc)
+                       
+                    kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(hcoords[i].T).evaluate(grid)
+                    kde = kde[kdegmask]/(np.sum(kde[kdegmask])*(stepsize**len(hcoords[i])))
+                    kde[outside_walls] = 0
+                    kde = kde/(np.sum(kde)*(stepsize**len(hcoords[i])))
+                    
+                    KDE[i] = kde.reshape( list(map(len, axes))[::-1], order='F')
+                    hcells[i][pxbar] = -1
+
+                hkdes = [ KDE[i].copy() * ratios[invGenes[embedding.loc[reps[i], 'gene_ID']]][ invCells[embedding.loc[reps[i], 'ndimage_ID']] ] for i in range(len(KDE))]
+                hzlevel = np.array(list(map(np.argmax, hzhist)))
+
+                # Min-Max KDEs & Cells
+                fig,ax = plt.subplots(4, N, figsize=(2*N,8), layout="constrained")
+                ax = np.atleast_1d(ax).ravel()
+
+                fig.suptitle(transcriptomes[Genes[gidx]]+' : '+embedding.columns[2+pcnum]+Pname+' ('+Bname+')', fontsize=1.25*fs)
+
+                for i in range(2*N):
+                    j = i
+                    ax[j].imshow(hcells[i]+1, cmap=cellular_cmap, origin='lower', extent=hextent[i], vmin=0, vmax=nnuc+2);
+                    ax[j].scatter(hcoords[i][0], hcoords[i][1], color=color[4*((i)//N)], marker='o', s=int(4e6/hcells[i].size),
+                                       alpha=max([0.1, min([1, 25/len(hcoords[i][0])])]))
+                    ax[j].set_facecolor(wong[2])
+                    ax[j].set_title('ID: {} [N = {}]'.format(orig_idx[i], len(hcoords[i][0])), fontsize=fs)
+                    
+                    j = i+2*N
+                    ax[j].imshow(hkdes[i][hzlevel[i],:,:], origin='lower', cmap=cmap[4*((i)//N)], vmin=0, vmax=kmax)
+                    ax[j].set_facecolor( mpl.colormaps[ cmap[4*((i)//N)] ](0) )
+                    ax[j].set_title('ID: {} '.format(orig_idx[i]) + '[$\\tilde{\\rho}=$' + '{:.2f}]'.format(density[i]), fontsize=fs)
+                    
+                for i in range(len(ax)):
+                    ax[i].set_aspect('equal', 'datalim')
+                    ax[i].tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
+                
+                plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+                plt.close()
         
     # Look at differences
     
@@ -529,39 +527,6 @@ def main():
         merge = embedding[embedding['gene_ID'] == Genes[gi]]
         merge = merge.merge(embedding[embedding['gene_ID'] == Genes[gj]],how='inner', on = 'ndimage_ID', suffixes=['_{}'.format(i) for i in [gi,gj]])
         merge = merge.drop(columns=['gene_ID_{}'.format(i) for i in [gi,gj]])
-        
-        filename = dsrc + bname + pname + '_{}_pc_vs_pc_{}'.format(*transcriptomes[Genes[[gi,gj]]])
-        if rewrite or (not os.path.isfile(filename+'.png')):
-            
-            fig, ax = plt.subplots(2,2, figsize=(9,6), sharex=False, sharey=False)
-
-            for i in range(2):
-                ax[i,0].set_ylabel(embedding.columns[2+i], fontsize=fs)
-                ax[0,i].set_title(embedding.columns[2+i], fontsize=fs)
-
-            for it in itertools.product(range(2), repeat=2):
-                
-                pca_comp = merge.loc[:, [ embedding.columns[2 + it[i]]+'_{}'.format(i) for i in range(2)] ]
-                diff = np.subtract(*(pca_comp.T.values))
-                vmin = utils.minimum_qq_size( diff, alpha=0.25, iqr_factor=1.5)
-                vmax = utils.maximum_qq_size( diff, alpha=0.25, iqr_factor=1.5)
-                corr = stats.spearmanr(*(pca_comp.T.values))
-                expo = int(np.ceil(np.log10(corr.pvalue)))
-                ll = '$\\rho = ${:.2f}\npval $< 10^{{{}}}$'.format(corr.statistic, expo)
-                    
-                ax[it].scatter(pca_comp.iloc[:,0], pca_comp.iloc[:,1], c=diff, marker='o', cmap='plasma',
-                                 edgecolor='black', linewidth=0.5, zorder=2, s=25, vmin=vmin, vmax=vmax, label=ll)
-                ax[it].legend(fontsize=fs, handlelength=0, handletextpad=0, loc='upper right', markerscale=0, facecolor='whitesmoke')
-                ax[it].set_facecolor('snow')
-                ax[it].tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
-
-            fig.supxlabel(transcriptomes[Genes[gi]], fontsize=fs)
-            fig.supylabel(transcriptomes[Genes[gj]], fontsize=fs)
-            fig.suptitle(Bname, fontsize=1.25*fs)
-            fig.tight_layout();
-            plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
-            print(filename)
-            plt.close()
         
         imi = [embedding[(embedding['ndimage_ID'] == i) & (embedding['gene_ID'] == Genes[gi])].index[0] for i in merge['ndimage_ID'] ]
         imj = [embedding[(embedding['ndimage_ID'] == i) & (embedding['gene_ID'] == Genes[gj])].index[0] for i in merge['ndimage_ID'] ]
@@ -577,13 +542,11 @@ def main():
 
         diffs_pc = np.array([ np.linalg.norm(merge.loc[:, diff_option[i][0]].values - merge.loc[:, diff_option[i][1]].values, ord=2, axis=1) for i in range(len(diff_option))])
         diffs_pi = np.array([ np.max(np.linalg.norm( dimg, ord=ord, axis=2), axis=0) for ord in ord_comparison ])
-
         diffs = np.vstack((diffs_pc, diffs_pi))
-        
-        cellloc = metacell.loc[ merge['ndimage_ID'], ['ndimage_comX','ndimage_comY','orig_cellID'] ].values
-        dists = spatial.distance.squareform(spatial.distance.pdist(cellloc[:,:2], metric='euclidean'), checks=False)
-        ecc = np.linalg.norm(dists, ord=1, axis=1)
-        ecc -= ecc.min()
+
+        cellloc = metacell.loc[ merge['ndimage_ID'].values, ['ndimage_comX','ndimage_comY','orig_cellID'] ].values
+        ecc = metaecc.loc[merge['ndimage_ID'].values, 'eccentricity'].values
+        ecc = metaecc['eccentricity'].max() - ecc
         
         filename = dsrc + bname + pname + '_{}_vs_{}'.format(*transcriptomes[Genes[[gi,gj]]])
         if rewrite or (not os.path.isfile(filename+'.png')):
@@ -737,15 +700,10 @@ def main():
                         foo = '{}_-_ecc_-_vs_-_{}_PC{}_-_spearman_{}'.format(w, transcriptomes[Genes[gidx]][-9:], k+1, t)
                         fivegcolumns.append(foo)
                         
-        cellloc = metacell.loc[ Cells, ['ndimage_comX','ndimage_comY','orig_cellID'] ].values
-        dists = spatial.distance.squareform(spatial.distance.pdist(cellloc[:,:2], metric='euclidean'), checks=False)
-        ecc = np.linalg.norm(dists, ord=1, axis=1)
-        ecc -= ecc.min()
-        
         filename = dsrc + bname + pname + '_{}_{}_pca_{}.csv'.format(*transcriptomes[Genes[[gi,gj]]], full_id_gene)
         if rewrite or (not os.path.isfile(filename)):
 
-            fivegdata = np.zeros( (15, len(fivegcolumns) ))
+            fivegdata = np.zeros( (10, len(fivegcolumns) ))
             
             for i in range(len(fivegdata)):
                 ct = 0
@@ -783,7 +741,7 @@ def main():
 
         fivegdata = pd.read_csv(filename, header=None, names=fivegcolumns)
         
-        for min5G in range(4):
+        for min5G in range(2):
             Gname = ' {}$\geq${}.'.format(full_id_gene, 1+min5G)
             O5G = (transcell.loc[full_id_gene, Cells.astype(str)] > min5G).values
             nonO5G = (transcell.loc[full_id_gene, Cells.astype(str)] <= min5G).values
@@ -861,7 +819,7 @@ def main():
                 fig.supxlabel(transcriptomes[Genes[gi]], fontsize=1.28*fs)
                 fig.supylabel(transcriptomes[Genes[gj]], fontsize=1.28*fs)
                 fig.suptitle(Bname + Gname + Pname , fontsize=1.28*fs)
-
+                
                 fig.tight_layout();
                 plt.savefig(filename, dpi=dpi, bbox_inches='tight', format='png')
                 plt.close()
@@ -892,6 +850,7 @@ def main():
                             ax[it].tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
 
                 fig.suptitle(Bname + Gname + Pname , fontsize=1.28*fs)
+                fig.supylabel('Eccentricity', fontsize=1.28*fs)
 
                 fig.tight_layout();
                 plt.savefig(filename, dpi=dpi, bbox_inches='tight', format='png')

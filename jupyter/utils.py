@@ -535,3 +535,41 @@ def signifscalar(scalar, limits=[1e-4,1e-3,1e-2]):
     if scalar <= limits[2]:
         return '*'
     return 'n.s.'
+
+def get_largest_element(comp, thr=0.1, minsize=None, outlabels=False):
+    tot = np.sum(comp > 0)
+    labels,num = ndimage.label(comp, structure=ndimage.generate_binary_structure(comp.ndim, 1))
+    hist,bins = np.histogram(labels, bins=num, range=(1,num+1))
+    argsort_hist = np.argsort(hist)[::-1]
+
+    if minsize is None:
+        minsize = np.max(hist) + 1
+
+    where = np.where((hist/tot > thr) | (hist > minsize))[0] + 1
+    print(num,'components\t',len(where),'preserved')
+    print(np.sort(hist)[::-1][:20])
+
+    mask = labels == where[0]
+    for w in where[1:]:
+        mask = mask | (labels == w)
+    box0 = comp.copy()
+    box0[~mask] = 0
+
+    if outlabels:
+        return box0, labels, where
+
+    return box0
+
+def borderize(img, neighbor_structure=None):
+    
+    mborder = ndimage.generate_binary_structure(img.ndim, img.ndim).astype(int)
+    mborder[mborder == 1] = -1
+    mborder[1,1] = -np.sum(mborder) - 1
+    
+    bimg = img.copy().astype(int)
+    bimg[bimg > 0]  = 1
+    border = ndimage.convolve(bimg, mborder, mode='constant', cval=0)
+    border[border < 0] = 0
+    border[border > 0] = 1
+    
+    return border
