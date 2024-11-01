@@ -267,9 +267,11 @@ def kde_grid_generator(stepsize, maxdims, pows2 = pows2, pad=1.5):
 
     return axes, grid, mask
 
-def cell_grid_preparation(cidx, cell, extent, zmax, stepsize, cell_nuc, pows2=pows2):
+def cell_grid_preparation(cidx, cell, extent, zmax, stepsize, cell_nuc, pows2=pows2, maxdims=None):
     
-    maxdims = ( cell.shape[1], cell.shape[0], zmax )
+    if maxdims is None:
+        maxdims = ( cell.shape[1], cell.shape[0], zmax )
+    
     axes, grid, gmask = kde_grid_generator(stepsize=stepsize, maxdims=maxdims, pows2 = pows2, pad=1.5)
     grid[:, :2] = grid[:, :2] + np.array([ extent[0], extent[2] ])
     cgrid = grid[gmask].copy()

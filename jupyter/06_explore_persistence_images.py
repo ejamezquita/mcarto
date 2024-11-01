@@ -1,7 +1,7 @@
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-from matplotlib.colors import ListedColormap
+
 import numpy as np
 import pandas as pd
 import argparse
@@ -139,7 +139,7 @@ def main():
     wc = wcoords[:, ~np.all(wcoords%100, axis=0)]
     
     foo = [ wong[-1], wong[-2] ] + np.repeat(wong[1], nnuc).tolist() + ['#f0f0f0']
-    cellular_cmap = ListedColormap(foo)
+    cellular_cmap = mpl.colors.ListedColormap(foo)
 
     translocs = [None for i in range(len(transcriptomes))]
     for i in range(len(transcriptomes)):
