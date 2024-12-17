@@ -283,6 +283,7 @@ def main():
         ax[i].scatter(pca[reps,0], pca[reps,1], c='k', marker='*', s=100, alpha=1, zorder=2)
         ax[i].set_xlabel(embedding.columns[2]+Pname, fontsize=fs)
         ax[i].set_ylabel(embedding.columns[3], fontsize=fs)
+        ax[i].set_facecolor('snow')
         print(filename)
         plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
         plt.close()

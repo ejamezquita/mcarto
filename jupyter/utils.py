@@ -15,9 +15,6 @@ import json
 # PART 0
 # ======================================================================
 
-pxs = 75
-pxbar = np.s_[-15:-5, 5:5 + pxs]
-
 def is_type_tryexcept(s, testtype=int):
     """ Returns True if string is a number. """
     try:
@@ -69,6 +66,8 @@ def get_range_gene_values(arginput=None, meta=None, startval=0):
         
     return Vals
 
+pxs = 75
+plot_pxbar = np.s_[-25:-5, 5 : (5 + pxs)]
 def get_cell_img(cidx, metacell, label, lnuc, nnuc, PP=10, pxbar=False):
     s_ = (np.s_[max([0, metacell.loc[cidx, 'y0'] - PP]) : min([label.shape[0], metacell.loc[cidx, 'y1'] + PP])],
           np.s_[max([1, metacell.loc[cidx, 'x0'] - PP]) : min([label.shape[1], metacell.loc[cidx, 'x1'] + PP])])
@@ -81,7 +80,7 @@ def get_cell_img(cidx, metacell, label, lnuc, nnuc, PP=10, pxbar=False):
     cell[ label[s_] == 0 ] = -1
     
     if pxbar:
-        cell[pxbar] = -1
+        cell[plot_pxbar] = -1
 
     return cell, extent
     
@@ -529,14 +528,16 @@ def cardinal_distance_transform(img):
 
     return top[pss], right[pss], bottom[pss], left[pss]
 
-def signifscalar(scalar, limits=[1e-4,1e-3,1e-2]):
+def signifscalar(scalar, limits=[1e-5,1e-4,1e-3,1e-2]):
     if scalar <= limits[0]:
-        return '***'
+        return '****'
     if scalar <= limits[1]:
-        return '**'
+        return '***'
     if scalar <= limits[2]:
+        return '**'
+    if scalar <= limits[3]:
         return '*'
-    return 'n.s.'
+    return ''
 
 def get_largest_element(comp, thr=0.1, minsize=None, outlabels=False):
     tot = np.sum(comp > 0)
@@ -575,3 +576,4 @@ def borderize(img, neighbor_structure=None):
     border[border > 0] = 1
     
     return border
+
