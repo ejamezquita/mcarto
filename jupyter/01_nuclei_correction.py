@@ -71,14 +71,14 @@ def main():
     label, cellnum = ndimage.label(wall, struc1)
     print('Detected',cellnum,'cells')
 
-    filenames = sorted(glob('../Bacteria Info for Erik/*.txt'))
+    filenames = sorted(glob('../Bacteria Info for Erik/*_v2.txt'))
 
     transcriptomes = [ None for _ in range(len(filenames)) ]
     translocs = [ None for _ in range(len(filenames)) ]
 
     for i in range(len(filenames)):
-        transcriptomes[i] = os.path.splitext(os.path.split(filenames[i])[1])[0]
-        translocs[i] = pd.read_csv(filenames[i], sep='\t')
+        transcriptomes[i] = os.path.splitext(os.path.split(filenames[i])[1])[0][:-3]
+        translocs[i] = pd.read_csv(filenames[i], sep='\t').iloc[:,:4]
 
     transcriptomes = np.asarray(transcriptomes)
     print(len(transcriptomes), 'transcriptomes')

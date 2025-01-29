@@ -268,6 +268,7 @@ def kde_grid_generator(stepsize, maxdims, pows2 = pows2, pad=1.5):
 
 def cell_grid_preparation(cidx, cell, labels_, extent, zmax, stepsize, cell_nuc, pows2=pows2, maxdims=None):
     
+    s_ = np.s_[ extent[2]:extent[3], extent[0]:extent[1] ]
     if maxdims is None:
         maxdims = ( cell.shape[1], cell.shape[0], zmax )
     
@@ -278,7 +279,9 @@ def cell_grid_preparation(cidx, cell, labels_, extent, zmax, stepsize, cell_nuc,
     cgrid[:,:2] = grid[gmask][:,:2] - np.array([extent[0], extent[2]])
 
     nuc_lims = cell_nuc.loc[ (cell_nuc['ndimage_ID'] == cidx), ['ndimage_ID','nuc_ID','N_inside','n_bot','n_top']]
-    outside_walls = labels_[cgrid[:,1] , cgrid[:,0]] != cidx
+    #outside_walls = labels_[cgrid[:,1] , cgrid[:,0]] != cidx
+    outside_walls = cell[cgrid[:,1],cgrid[:,0]] < 1
+    outside_walls |= labels_[s_][cgrid[:,1] , cgrid[:,0]] != cidx
     
     foo = np.setdiff1d( np.unique(cell), nuc_lims['nuc_ID'].values)[:-1]
     for v in foo:

@@ -23,6 +23,7 @@ pows2 = 2**np.arange(20) + 1
 PP = 6
 pp = 0
 BW = [10,15,20,25,30]
+KBINS_NO = 27
 
 def main():
     
@@ -51,6 +52,8 @@ def main():
                         help="directory to contain corrected spatial location data")
     parser.add_argument("--kde_directory", type=str, default="kde",
                         help="directory to contain data related to KDE computations")
+    parser.add_argument("--geometry_directory", type=str, default="geometry",
+                        help="directory to contain data related to geometry computations")
     parser.add_argument("-w", "--rewrite_results", action="store_true",
                         help="prior results will be rewritten")
     args = parser.parse_args()
@@ -67,6 +70,7 @@ def main():
     nsrc = '..' + os.sep + args.nuclear_directory + os.sep
     tsrc = '..' + os.sep + args.location_directory + os.sep
     ksrc = '..' + os.sep + args.kde_directory + os.sep + sample + os.sep
+    gsrc = '..' + os.sep + args.geometry_directory + os.sep + sample + os.sep
 
     bw = args.kde_bandwidth
     stepsize = args.grid_stepsize
@@ -76,6 +80,14 @@ def main():
     transcell = pd.read_csv(ksrc + sample + '_transcells_metadata.csv', index_col=-1)
     cell_nuc = pd.read_csv(ksrc + sample + '_nuclei_limits.csv')
     transcriptomes = np.asarray(metatrans['gene'])
+    
+    wall = tf.imread(wsrc + sample + '_dams.tif').astype(bool)
+    label, cellnum = ndimage.label(wall, ndimage.generate_binary_structure(2,1))
+    print('Detected',cellnum,'cells')
+    
+    lnuc, nnuc = ndimage.label(tf.imread(nsrc + sample + '_EDT.tif') < args.nuclei_mask_cutoff, ndimage.generate_binary_structure(2,1))
+    print('Detected',nnuc,'nuclei')
+
 
     Cells = utils.get_range_cell_values(args.cell_focus, metacell, startval=1)
     Genes = utils.get_range_gene_values(args.gene_focus, transcriptomes, startval=0)
@@ -86,117 +98,103 @@ def main():
         return 0
     
     tcumsum = np.hstack(([0], np.cumsum(metatrans['cyto_number'].values)))
-    translocs = [None for _ in range(len(transcriptomes))]
+    
+    translocs = [None for i in range(len(transcriptomes))]
     for i in range(len(transcriptomes)):
         filename = tsrc + sample + os.sep + 'location_corrected_D2_-_' + transcriptomes[i] + '.csv'
         translocs[i] = pd.read_csv(filename, header=None, names=['X', 'Y', 'Z'])
+        translocs[i]['cidx'] = label[ translocs[i]['Y'], translocs[i]['X'] ]
+        translocs[i]['nidx'] =  lnuc[ translocs[i]['Y'], translocs[i]['X'] ]
+
     tlocs = pd.concat(translocs)
-    zmax = np.max(tlocs['Z']+stepsize)
     
+    zmax = np.max(tlocs['Z']+stepsize)
+
     for level in Levels:
         dst = '..' + os.sep + level + 'level' + os.sep + sample + os.sep
         if not os.path.isdir(dst):
             os.mkdir(dst)
-        for i in range(len(Genes)):
-            tdst = dst + transcriptomes[Genes[i]] + os.sep
+        for gidx in Genes:
+            tdst = dst + transcriptomes[gidx] + os.sep
             if not os.path.isdir(tdst):
                 os.mkdir(tdst)
-                
-    wall = tf.imread(wsrc + sample + '_dams.tif').astype(bool)
-    label, cellnum = ndimage.label(wall, ndimage.generate_binary_structure(2,1))
-    print('Detected',cellnum,'cells')
     
-    lnuc, nnuc = ndimage.label(tf.imread(nsrc + sample + '_EDT.tif') < args.nuclei_mask_cutoff, ndimage.generate_binary_structure(2,1))
-    print('Detected',nnuc,'nuclei')
-
+    if not os.path.isdir(gsrc):
+        os.mkdir(gsrc)
+    for gidx in Genes:
+        tdst = gsrc + transcriptomes[gidx] + os.sep
+        if not os.path.isdir(tdst):
+            os.mkdir(tdst)
+            
+    
     # # Select a cell and then a gene
-
+    
+    level = 'sub'
     for cidx in Cells:
         
-        all_files = True
-        for tidx in Genes:
-            for level in Levels:
-                for bw in BW:
-                    filename = '..' + os.sep + '{}level'.format(level) + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep 
-                    filename +='{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(transcriptomes[tidx], level, PP, stepsize, bw, cidx)
-                    #print(filename, os.path.isfile(filename))
-                    if not os.path.isfile(filename):
-                        all_files = False
-                        break
+        # all_files = True
+        # for tidx in Genes:
+            # for level in Levels:
+                # for bw in BW:
+                    # filename = '..' + os.sep + '{}level'.format(level) + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep 
+                    # filename +='{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(transcriptomes[tidx], level, PP, stepsize, bw, cidx)
+                    # #print(filename, os.path.isfile(filename))
+                    # if not os.path.isfile(filename):
+                        # all_files = False
+                        # break
         
         if rewrite or not all_files:
             
-            s_ = (np.s_[max([0, metacell.loc[cidx, 'y0'] - PP]) : min([wall.shape[0], metacell.loc[cidx, 'y1'] + PP])],
-                  np.s_[max([1, metacell.loc[cidx, 'x0'] - PP]) : min([wall.shape[1], metacell.loc[cidx, 'x1'] + PP])])
-            extent = (s_[1].start, s_[1].stop, s_[0].start, s_[0].stop)
+            cell, cextent = utils.get_cell_img(cidx, metacell, label, lnuc, nnuc, PP=PP, pxbar=True)
+            s_ = np.s_[ cextent[2]:cextent[3] , cextent[0]:cextent[1] ]
+            edt = ndimage.distance_transform_edt(label[s_] == cidx)
 
+            axes, grid, kdegmask, cgrid, outside_walls = utils.cell_grid_preparation(cidx, cell, label, cextent, zmax, stepsize, cell_nuc)
+            outw = outside_walls.copy().reshape( list(map(len, axes))[::-1], order='F')
+            zfactor = np.divide(  list(map(len, axes))[::-1][1:] , np.asarray(cell.shape) )
+            kbins = np.linspace(0, np.max(edt), KBINS_NO)
 
-            cell = wall[s_].copy().astype(int) - 1
-            cell[ label[s_] == cidx ] = nnuc + 1
-            cell[ lnuc[s_] > 0 ] = lnuc[s_][lnuc[s_] > 0]
+            cellhist = np.digitize(edt, kbins, right=True)
+            zoom = ndimage.zoom(cellhist, zfactor, mode='grid-constant', grid_mode=True)
+            zoom = (~outw)*np.tile(zoom, reps=(len(axes[-1]), 1,1))
 
-            maxdims = ( cell.shape[1], cell.shape[0], zmax) 
-            axes, grid, gmask = utils.kde_grid_generator(stepsize=stepsize, maxdims=maxdims, pows2 = pows2, pad=1.5)
-            grid[:, :2] = grid[:, :2] + np.array([s_[1].start, s_[0].start])
-            
-            cgrid = grid[gmask].copy()
-            cgrid[:,:2] = grid[gmask][:,:2] - np.array([s_[1].start, s_[0].start])
-
-            nuc_lims = cell_nuc.loc[ (cell_nuc['ndimage_ID'] == cidx), ['ndimage_ID','nuc_ID','N_inside','n_bot','n_top']]
-            outside_walls = cell[cgrid[:,1],cgrid[:,0]] < 1
-
-            for j in range(len(nuc_lims)):
-                _, nidx, N_inside, n_bot, n_top = nuc_lims.iloc[j]
-                if n_bot < n_top:
-                    thr_mask = (cgrid[:,2] >= n_bot) & (cgrid[:,2] <= n_top)
-                else:
-                    thr_mask = (cgrid[:,2] <= n_top) | (cgrid[:,2] >= n_bot)
-
-                outside_walls |= ((cell[cgrid[:,1],cgrid[:,0]] == nidx) & thr_mask)
+            peripherality = pd.DataFrame(index=range(1,len(kbins)))
+            peripherality['count'] =  ndimage.histogram(zoom, 1, len(kbins)-1, len(kbins)-1)
             
             for tidx in Genes:
 
-                coords = translocs[tidx].values.T
-                cmask = label[ coords[1], coords[0] ] == cidx
-                
-                if np.sum(cmask) > 5:
-                    all_files = True
-                    
-                    for level in Levels:
-                        for bw in BW:
-                            filename = '..' + os.sep + '{}level'.format(level) + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep 
-                            filename +='{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(transcriptomes[tidx], level, PP, stepsize, bw, cidx)
-                            #print(filename, os.path.isfile(filename))
-                            if not os.path.isfile(filename):
-                                all_files = False
-                                break
-                    
-                    if rewrite or not all_files:
-                
-                        ccoords = coords[:, cmask ].copy()
+                coords = translocs[tidx].loc[ translocs[tidx]['cidx'] == cidx , ['X','Y', 'Z'] ].values.T
+                tdst = '..' + os.sep + level + 'level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep
                         
-                        # # Compute, crop, and correct the KDE
-                        
-                        for bw in BW:
+                # # Compute, crop, and correct the KDE
+                
+                for bw in BW:
 
-                            kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(ccoords.T).evaluate(grid)
-                            kde = kde[gmask]/(np.sum(kde[gmask])*(stepsize**len(coords)))
-                            kde[outside_walls] = 0
+                    kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(coords.T).evaluate(grid)
+                    kde = kde[kdegmask]/(np.sum(kde[kdegmask])*(stepsize**len(coords)))
+                    kde[outside_walls] = 0
 
-                            kde = kde/(np.sum(kde)*(stepsize**len(coords)))
-                            kde = kde.reshape( list(map(len, axes))[::-1], order='F')
-                            
-                            # # Cubical persistence
+                    kde = kde/(np.sum(kde)*(stepsize**len(coords)))
+                    kde = kde.reshape( list(map(len, axes))[::-1], order='F')
+                    
+                    foo = '_{}_-_{}'.format(bw, transcriptomes[tidx])
+                    peripherality['sum' + foo] = ndimage.sum_labels(kde, zoom, range(1, len(kbins)))
+                    peripherality['mean' + foo] = peripherality['sum'+foo] / peripherality['count']
+                    
+                    # # Cubical persistence
 
-                            for level in Levels:
-                                tdst = '..' + os.sep + level + 'level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep
-                                filename = tdst + transcriptomes[tidx] + '_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(level,PP,stepsize,bw,cidx)
-                                if not os.path.isfile(filename):
-                                    cc = gd.CubicalComplex(top_dimensional_cells = utils.get_level_filtration(kde, level) )
-                                    pers = cc.persistence(homology_coeff_field=2, min_persistence=1e-15)
-                                    print(filename)
-                                    with open(filename, 'w') as f:
-                                        json.dump(pers,f)
+                    #for level in Levels:
+                    if metacell.loc[cidx, 'nuclei_area'] > 0:
+                        filename = tdst + transcriptomes[tidx] + '_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(level,PP,stepsize,bw,cidx)                        
+                        cc = gd.CubicalComplex(top_dimensional_cells = utils.get_level_filtration(kde, level) )
+                        pers = cc.persistence(homology_coeff_field=2, min_persistence=1e-15)
+                        print(filename)
+                        with open(filename, 'w') as f:
+                            json.dump(pers,f)
+                                
+            filename = gsrc + transcriptomes[tidx] + os.sep + transcriptomes[tidx] + '_-_peripherality_c{:06d}.csv'.format(cidx)
+            peripherality.to_csv(filename, index=False)
+            
 
     return 0
 
