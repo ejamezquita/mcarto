@@ -543,7 +543,7 @@ def signifscalar(scalar, limits=[1e-5,1e-4,1e-3,1e-2]):
         return '*'
     return ''
 
-def get_largest_element(comp, thr=0.1, minsize=None, outlabels=False):
+def get_largest_element(comp, thr=0.1, minsize=None, outlabels=False, verbose=False):
     tot = np.sum(comp > 0)
     labels,num = ndimage.label(comp, structure=ndimage.generate_binary_structure(comp.ndim, 1))
     hist,bins = np.histogram(labels, bins=num, range=(1,num+1))
@@ -553,8 +553,9 @@ def get_largest_element(comp, thr=0.1, minsize=None, outlabels=False):
         minsize = np.max(hist) + 1
 
     where = np.where((hist/tot > thr) | (hist > minsize))[0] + 1
-    print(num,'components\t',len(where),'preserved')
-    print(np.sort(hist)[::-1][:20])
+    if verbose:
+        print(num,'components\t',len(where),'preserved')
+        print(np.sort(hist)[::-1][:20])
 
     mask = labels == where[0]
     for w in where[1:]:
