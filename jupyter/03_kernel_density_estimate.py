@@ -132,67 +132,54 @@ def main():
     level = 'sub'
     for cidx in Cells:
         
-        # all_files = True
-        # for tidx in Genes:
-            # for level in Levels:
-                # for bw in BW:
-                    # filename = '..' + os.sep + '{}level'.format(level) + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep 
-                    # filename +='{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(transcriptomes[tidx], level, PP, stepsize, bw, cidx)
-                    # #print(filename, os.path.isfile(filename))
-                    # if not os.path.isfile(filename):
-                        # all_files = False
-                        # break
+        cell, cextent = utils.get_cell_img(cidx, metacell, label, lnuc, nnuc, PP=PP, pxbar=True)
+        s_ = np.s_[ cextent[2]:cextent[3] , cextent[0]:cextent[1] ]
+        edt = ndimage.distance_transform_edt(label[s_] == cidx)
+
+        axes, grid, kdegmask, cgrid, outside_walls = utils.cell_grid_preparation(cidx, cell, label, cextent, zmax, stepsize, cell_nuc)
+        outw = outside_walls.copy().reshape( list(map(len, axes))[::-1], order='F')
+        zfactor = np.divide(  list(map(len, axes))[::-1][1:] , np.asarray(cell.shape) )
+        kbins = np.linspace(0, np.max(edt), KBINS_NO)
+
+        cellhist = np.digitize(edt, kbins, right=True)
+        zoom = ndimage.zoom(cellhist, zfactor, mode='grid-constant', grid_mode=True)
+        zoom = (~outw)*np.tile(zoom, reps=(len(axes[-1]), 1,1))
+
+        peripherality = pd.DataFrame(index=range(1,len(kbins)))
+        pcount =  ndimage.histogram(zoom, 1, len(kbins)-1, len(kbins)-1)
         
-        if rewrite or not all_files:
+        for tidx in Genes:
+
+            coords = translocs[tidx].loc[ translocs[tidx]['cidx'] == cidx , ['X','Y', 'Z'] ].values.T
+            tdst = '..' + os.sep + level + 'level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep
+                    
+            # # Compute, crop, and correct the KDE
             
-            cell, cextent = utils.get_cell_img(cidx, metacell, label, lnuc, nnuc, PP=PP, pxbar=True)
-            s_ = np.s_[ cextent[2]:cextent[3] , cextent[0]:cextent[1] ]
-            edt = ndimage.distance_transform_edt(label[s_] == cidx)
+            for bw in BW:
 
-            axes, grid, kdegmask, cgrid, outside_walls = utils.cell_grid_preparation(cidx, cell, label, cextent, zmax, stepsize, cell_nuc)
-            outw = outside_walls.copy().reshape( list(map(len, axes))[::-1], order='F')
-            zfactor = np.divide(  list(map(len, axes))[::-1][1:] , np.asarray(cell.shape) )
-            kbins = np.linspace(0, np.max(edt), KBINS_NO)
+                kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(coords.T).evaluate(grid)
+                kde = kde[kdegmask]/(np.sum(kde[kdegmask])*(stepsize**len(coords)))
+                kde[outside_walls] = 0
 
-            cellhist = np.digitize(edt, kbins, right=True)
-            zoom = ndimage.zoom(cellhist, zfactor, mode='grid-constant', grid_mode=True)
-            zoom = (~outw)*np.tile(zoom, reps=(len(axes[-1]), 1,1))
-
-            peripherality = pd.DataFrame(index=range(1,len(kbins)))
-            peripherality['count'] =  ndimage.histogram(zoom, 1, len(kbins)-1, len(kbins)-1)
-            
-            for tidx in Genes:
-
-                coords = translocs[tidx].loc[ translocs[tidx]['cidx'] == cidx , ['X','Y', 'Z'] ].values.T
-                tdst = '..' + os.sep + level + 'level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep
-                        
-                # # Compute, crop, and correct the KDE
+                kde = kde/(np.sum(kde)*(stepsize**len(coords)))
+                kde = kde.reshape( list(map(len, axes))[::-1], order='F')
                 
-                for bw in BW:
+                peripherality['sum' + '_{}'.format(bw)] = ndimage.sum_labels(kde, zoom, range(1, len(kbins)))
+                peripherality['mean' + '_{}'.format(bw)] = peripherality['sum'+foo] / pcount
+                
+                # # Cubical persistence
 
-                    kde = FFTKDE(kernel='gaussian', bw=bw, norm=2).fit(coords.T).evaluate(grid)
-                    kde = kde[kdegmask]/(np.sum(kde[kdegmask])*(stepsize**len(coords)))
-                    kde[outside_walls] = 0
-
-                    kde = kde/(np.sum(kde)*(stepsize**len(coords)))
-                    kde = kde.reshape( list(map(len, axes))[::-1], order='F')
-                    
-                    foo = '_{}_-_{}'.format(bw, transcriptomes[tidx])
-                    peripherality['sum' + foo] = ndimage.sum_labels(kde, zoom, range(1, len(kbins)))
-                    peripherality['mean' + foo] = peripherality['sum'+foo] / peripherality['count']
-                    
-                    # # Cubical persistence
-
-                    #for level in Levels:
-                    if metacell.loc[cidx, 'nuclei_area'] > 0:
-                        filename = tdst + transcriptomes[tidx] + '_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(level,PP,stepsize,bw,cidx)                        
-                        cc = gd.CubicalComplex(top_dimensional_cells = utils.get_level_filtration(kde, level) )
-                        pers = cc.persistence(homology_coeff_field=2, min_persistence=1e-15)
-                        print(filename)
-                        with open(filename, 'w') as f:
-                            json.dump(pers,f)
-                                
-            filename = gsrc + transcriptomes[tidx] + os.sep + transcriptomes[tidx] + '_-_peripherality_c{:06d}.csv'.format(cidx)
+                #for level in Levels:
+                #if metacell.loc[cidx, 'nuclei_area'] > 0:
+                
+                filename = tdst + transcriptomes[tidx] + '_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(level,PP,stepsize,bw,cidx)                        
+                cc = gd.CubicalComplex(top_dimensional_cells = utils.get_level_filtration(kde, level) )
+                pers = cc.persistence(homology_coeff_field=2, min_persistence=1e-15)
+                print(filename)
+                with open(filename, 'w') as f:
+                    json.dump(pers,f)
+                        
+            filename = gsrc + '{}/{}_bins_peripherality_c{:06d}.csv'.format(transcriptomes[tidx], KBINS_NO-1, cidx)
             peripherality.to_csv(filename, index=False)
             
 
