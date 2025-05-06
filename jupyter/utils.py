@@ -267,7 +267,7 @@ def kde_grid_generator(stepsize, maxdims, pows2 = pows2, pad=1.5):
     return axes, grid, mask
 
 # labels_ = label[s_]
-def cell_grid_preparation(cidx, cell, labels_, extent, zmax, stepsize, cell_nuc, pows2=pows2, maxdims=None):
+def cell_grid_preparation(cidx, cell, labels_, extent, zmax, stepsize, cell_nuc, pows2=pows2, maxdims=None, exclude_nuclei=True):
     
     if maxdims is None:
         maxdims = ( cell.shape[1], cell.shape[0], zmax )
@@ -277,24 +277,26 @@ def cell_grid_preparation(cidx, cell, labels_, extent, zmax, stepsize, cell_nuc,
     cgrid = grid[gmask].copy()
     
     cgrid[:,:2] = grid[gmask][:,:2] - np.array([extent[0], extent[2]])
-
-    nuc_lims = cell_nuc.loc[ (cell_nuc['ndimage_ID'] == cidx), ['ndimage_ID','nuc_ID','N_inside','n_bot','n_top']]
-    #outside_walls = labels_[cgrid[:,1] , cgrid[:,0]] != cidx
-    outside_walls = cell[cgrid[:,1],cgrid[:,0]] < 1
-    outside_walls |= labels_[cgrid[:,1] , cgrid[:,0]] != cidx
     
-    foo = np.setdiff1d( np.unique(cell), nuc_lims['nuc_ID'].values)[:-1]
-    for v in foo:
-        outside_walls |= cell[cgrid[:,1], cgrid[:,0]] == v
+    if exclude_nuclei:
+        outside_walls = cell[cgrid[:,1],cgrid[:,0]] < 1
+        outside_walls |= labels_[cgrid[:,1] , cgrid[:,0]] != cidx
+        
+        nuc_lims = cell_nuc.loc[ (cell_nuc['ndimage_ID'] == cidx), ['ndimage_ID','nuc_ID','N_inside','n_bot','n_top']]
+        foo = np.setdiff1d( np.unique(cell), nuc_lims['nuc_ID'].values)[:-1]
+        for v in foo:
+            outside_walls |= cell[cgrid[:,1], cgrid[:,0]] == v
 
-    for j in range(len(nuc_lims)):
-        _, nidx, N_inside, n_bot, n_top = nuc_lims.iloc[j]
-        if n_bot < n_top:
-            thr_mask = (cgrid[:,2] >= n_bot) & (cgrid[:,2] <= n_top)
-        else:
-            thr_mask = (cgrid[:,2] <= n_top) | (cgrid[:,2] >= n_bot)
+        for j in range(len(nuc_lims)):
+            _, nidx, N_inside, n_bot, n_top = nuc_lims.iloc[j]
+            if n_bot < n_top:
+                thr_mask = (cgrid[:,2] >= n_bot) & (cgrid[:,2] <= n_top)
+            else:
+                thr_mask = (cgrid[:,2] <= n_top) | (cgrid[:,2] >= n_bot)
 
-        outside_walls |= ((cell[cgrid[:,1],cgrid[:,0]] == nidx) & thr_mask)
+            outside_walls |= ((cell[cgrid[:,1],cgrid[:,0]] == nidx) & thr_mask)
+    else:
+        outside_walls = labels_[cgrid[:,1] , cgrid[:,0]] != cidx
     
     return axes, grid, gmask, cgrid, outside_walls
         
@@ -331,33 +333,37 @@ def pers2numpy(pers):
 def get_diagrams(jsonfiles, ndims, remove_inf = False):
     # diag[j-th cell][k-th dimension]
     
-    diags = [ [np.empty((0,2)) for k in range(ndims)] for j in range(len(jsonfiles))]
+    diags = dict()
 
-    for j in range(len(jsonfiles)):
-        
-        if jsonfiles[j] is not None:
-            with open(jsonfiles[j]) as f:
-                diag = [tuple(x) for x in json.load(f)]
-            diag = pers2numpy(diag)
-        
-            for k in range(ndims):
-                diags[j][k] = diag[diag[:,0] == k, 1:]
+    for gene in jsonfiles:
+        diags[gene] = dict()
+        for i in range(len(jsonfiles[gene])):
+            filename = jsonfiles[gene][i]
+            cidx = int( os.path.splitext(os.path.split(filename)[1])[0].split('_c')[-1] )
+            if os.path.isfile(filename):
+                with open(filename) as f:
+                    diag = [tuple(x) for x in json.load(f)]
+                diag = pers2numpy(diag)
+                diags[gene][cidx] = [np.empty((0,2)) for k in range(ndims)]
+                for k in range(ndims):
+                    diags[gene][cidx][k] = diag[diag[:,0] == k, 1:]
     
     if remove_inf:
-        for j in range(len(diags)):
-            for k in range(ndims):
-                diags[j][k]  = np.atleast_2d(diags[j][k][np.all(diags[j][k] < np.inf, axis=1), :].squeeze())
-                
-
+        for gene in diags:
+            for cidx in diags[gene]:
+                for k in range(ndims):
+                    diags[gene][cidx][k]  = np.atleast_2d(diags[gene][cidx][k][np.all(diags[gene][cidx][k] < np.inf, axis=1), :].squeeze())
+                if sum(list(map(len, diags[gene][cidx]))) == 0:
+                    del diags[gene][cidx]
     return diags
 
 def normalize_counts(transfocus, normtype):
     if   normtype == 'both':
-        ratios = transfocus.values/np.sum(transfocus.values, axis=None)
+        ratios = transfocus/np.sum(transfocus.values, axis=None)
     elif normtype == 'cell':
-        ratios = transfocus.values/np.sum(transfocus.values, axis=0)
+        ratios = transfocus/np.sum(transfocus.values, axis=0)
     elif normtype == 'gene':
-        ratios = transfocus.values/np.sum(transfocus.values, axis=1).reshape(-1,1)
+        ratios = transfocus/np.sum(transfocus.values, axis=1).reshape(-1,1)
     else:
         print('Invalid normtype\nReceived', normtype,'\nExpected one of `both`, `cell`, or `gene`', sep='')
         ratios = None
@@ -370,32 +376,40 @@ def normalize_counts(transfocus, normtype):
 def normalize_persistence_diagrams(orig_diags, ratios, norm_type, SCALE=256):
     
     numpairs = 0
-    num_diags = len(orig_diags)*len(orig_diags[0])
-    ndims = len(orig_diags[0][0])
-    genemaxk = np.zeros((len(orig_diags), ndims))
-    maxlife = np.zeros((len(orig_diags), len(orig_diags[0]), len(orig_diags[0][0])))
-
-    for i in range(len(orig_diags)):
-        for j in range(len(orig_diags[i])):
-            for k in range(len(orig_diags[i][j])):
-                orig_diags[i][j][k] *= ratios[i][j]
-                numpairs += len(orig_diags[i][j][k])
-                if len(orig_diags[i][j][k]) > 0:
-                    maxlife[i,j,k] = orig_diags[i][j][k][0,1] - orig_diags[i][j][k][0,0]
-                    if genemaxk[i,k] < np.max(orig_diags[i][j][k]):
-                        genemaxk[i,k] = np.max(orig_diags[i][j][k])
+    num_diags = ratios.size
+    
+    for g in orig_diags:
+        for c in orig_diags[g]:
+            ndims = len(orig_diags[g][c])
+            break
+    
+    genemaxk = pd.DataFrame(0, index=ratios.index, columns=range(ndims), dtype=float)
+    maxlife = dict() 
+    
+    for gene in orig_diags:
+        maxlife[gene] = pd.DataFrame(0, index=iter(orig_diags[gene].keys()), columns=range(ndims), dtype=float)
+        for cidx in orig_diags[gene]:
+            for k in range(ndims):
+                orig_diags[gene][cidx][k] *= ratios.loc[gene,cidx]
+                numpairs += len(orig_diags[gene][cidx][k])
+                if len(orig_diags[gene][cidx][k]) > 0:
+                    maxlife[gene].loc[cidx , k] = orig_diags[gene][cidx][k][0,1] - orig_diags[gene][cidx][k][0,0]
+                    if genemaxk.loc[gene,k] < np.max(orig_diags[gene][cidx][k]):
+                        genemaxk.loc[gene,k] = np.max(orig_diags[gene][cidx][k])
 
     print('Initial number of life-birth pairs\t:', numpairs)
     
     if norm_type == 'gene':
         maxx = np.max(genemaxk,axis=1).reshape(len(maxlife),1,1)
     elif norm_type == 'both':
-        maxx = np.max(genemaxk) 
-
+        maxx = genemaxk.max(axis=None)
     rescale = SCALE/maxx
-    maxlife *= rescale
-    argmaxlife = np.argmax(maxlife, axis=-1)
-    mhist, _ = np.histogram(argmaxlife.ravel(), bins=range(ndims+1))
+    
+    mhist = np.zeros(ndims, dtype=int)
+    for gene in maxlife:
+        maxlife[gene] *= rescale
+        bar, _ = np.histogram(maxlife[gene].idxmax(axis=1), bins=range(ndims+1))
+        mhist += bar
     focus_dim = np.argmax(mhist)
     print('\nNo. of diagrams s.t. H_k had the most persistent component')
     for i in range(len(mhist)):
