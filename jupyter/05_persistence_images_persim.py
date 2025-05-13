@@ -86,7 +86,7 @@ def main():
     print('Exclude nuclear mRNA:', exclude_nuclei)
     
     if args.scale is None:
-        SCALES = [16,24,32,40,48]
+        SCALES = [8,16,24,32,40,48]
     else:
         SCALES = [args.scale]
         
@@ -118,7 +118,7 @@ def main():
     
     for gidx in range(len(Genes)):
         #transfocus = transcell.loc[ np.atleast_1d( transcriptomes[Genes]), Cells]
-        transfocus = transcell.loc[ np.atleast_1d( transcriptomes[Genes[ 2 ]]), Cells]
+        transfocus = transcell.loc[ np.atleast_1d( transcriptomes[Genes[ gidx ]]), Cells]
         ratios = utils.normalize_counts(transfocus, normtype)
         if ratios is None:
             print('ERROR: ratios is None')
@@ -175,9 +175,9 @@ def main():
                 tdst = dst + '{}_bw{}_{}level'.format(genes, bw, level) + os.sep
                 bname = tdst + 'PI_scale{}_'.format(SCALE)
                 Bname = 'PIs: KDE bandwidth {}. {}level persistence. Scale {}'.format(bw, level.title(), SCALE)
+                print('------\n',Bname,'\n-------')
                 if not os.path.isdir(tdst):
                     os.mkdir(tdst)
-                    print(tdst)
                 
                 img = dict()
                 for gene in lt_diags:
@@ -262,6 +262,7 @@ def main():
                     print('Considering the first', PCA.n_components,'PCs')
                     PCA.fit(data)
                     pca = PCA.transform(fulldata).astype('float32')
+                    zero_val = PCA.transform(scaler.transform(np.zeros((1,fulldata.shape[1]))))
                     loadings = PCA.components_.T * np.sqrt(PCA.explained_variance_)
                     explained_ratio = 100*PCA.explained_variance_ratio_
                     print(explained_ratio)
@@ -304,6 +305,7 @@ def main():
                     if rewrite or (not os.path.isfile(filename)):
                                                 
                         summary = bsummary.join(pd.DataFrame(pca, columns=pcacols))
+                        summary.loc[len(summary)] = ['ZERO', 0] + zero_val[0].tolist()
                         summary.to_csv(filename, index=False)
                         minspos = 1.2*summary[pcacols[:2]].min().values
                         
@@ -320,6 +322,7 @@ def main():
                             ax[i].set_title(gene)
                             ax[i].text(*minspos, Pname, ha='left', va='bottom', fontsize=0.85*fs)
                             ax[i].margins(0.1)
+                            ax[i].scatter(zero_val[0,0], zero_val[0,1], c='r', marker='x', zorder=3)
 
                         for i in range( len(ax) - len(nzcumsum)+1 , 0, -1):
                             fig.delaxes(ax[-i])
@@ -330,7 +333,7 @@ def main():
 
                         fig.tight_layout();
                         filename = bname + 'pca_' + pname + '.png'
-                        plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+                        plt.savefig(filename, dpi=dpi, bbox_inches='tight', format='png')
                         plt.close()
             
     return 0

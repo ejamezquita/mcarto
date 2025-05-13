@@ -165,7 +165,7 @@ def main():
         
         if not (all(isgfile.values()) & all(ispfile.values())):
             
-            cell, cextent = utils.get_cell_img(cidx, metacell, label, lnuc, nnuc, PP=PP, pxbar=True)
+            cell, cextent = utils.get_cell_img(cidx, metacell, label, lnuc, nnuc, PP=PP, pxbar=False)
             s_ = np.s_[ cextent[2]:cextent[3] , cextent[0]:cextent[1] ]
             axes, grid, kdegmask, cgrid, outside_walls = utils.cell_grid_preparation(cidx, cell, label[s_], cextent, zmax, stepsize, cell_nuc, exclude_nuclei=exclude_nuclei)
             

@@ -339,11 +339,11 @@ def get_diagrams(jsonfiles, ndims, remove_inf = False):
         diags[gene] = dict()
         for i in range(len(jsonfiles[gene])):
             filename = jsonfiles[gene][i]
-            cidx = int( os.path.splitext(os.path.split(filename)[1])[0].split('_c')[-1] )
             if os.path.isfile(filename):
                 with open(filename) as f:
                     diag = [tuple(x) for x in json.load(f)]
                 diag = pers2numpy(diag)
+                cidx = int( os.path.splitext(os.path.split(filename)[1])[0].split('_c')[-1] )
                 diags[gene][cidx] = [np.empty((0,2)) for k in range(ndims)]
                 for k in range(ndims):
                     diags[gene][cidx][k] = diag[diag[:,0] == k, 1:]
@@ -386,16 +386,18 @@ def normalize_persistence_diagrams(orig_diags, ratios, norm_type, SCALE=256):
     genemaxk = pd.DataFrame(0, index=ratios.index, columns=range(ndims), dtype=float)
     maxlife = dict() 
     
+    diags = dict()
     for gene in orig_diags:
+        diags[gene] = dict()
         maxlife[gene] = pd.DataFrame(0, index=iter(orig_diags[gene].keys()), columns=range(ndims), dtype=float)
         for cidx in orig_diags[gene]:
-            for k in range(ndims):
-                orig_diags[gene][cidx][k] *= ratios.loc[gene,cidx]
-                numpairs += len(orig_diags[gene][cidx][k])
+            diags[gene][cidx] = [ ratios.loc[gene,cidx]*orig_diags[gene][cidx][k] for k in range(ndims) ]
+            for k in range(len(orig_diags[gene][cidx])):
+                numpairs += len(diags[gene][cidx][k])
                 if len(orig_diags[gene][cidx][k]) > 0:
-                    maxlife[gene].loc[cidx , k] = orig_diags[gene][cidx][k][0,1] - orig_diags[gene][cidx][k][0,0]
-                    if genemaxk.loc[gene,k] < np.max(orig_diags[gene][cidx][k]):
-                        genemaxk.loc[gene,k] = np.max(orig_diags[gene][cidx][k])
+                    maxlife[gene].loc[cidx , k] = np.max(diags[gene][cidx][k][:,1] - diags[gene][cidx][k][:,0])
+                    if genemaxk.loc[gene,k] < np.max(diags[gene][cidx][k]):
+                        genemaxk.loc[gene,k] = np.max(diags[gene][cidx][k])
 
     print('Initial number of life-birth pairs\t:', numpairs)
     
@@ -416,8 +418,23 @@ def normalize_persistence_diagrams(orig_diags, ratios, norm_type, SCALE=256):
         print('H_{}:\t{} [ {:.1f}% ]'.format(i,mhist[i], 100*mhist[i]/num_diags) )
     print('\nWill focus just on dimension k = {}\n'.format(focus_dim) )
     
-    return orig_diags, rescale, maxlife, focus_dim
+    return diags, rescale, maxlife, focus_dim
+
+def grid_representatives(array, arrayd, steps=1, eps=4):
+    llim,blim = np.min(array, axis=0)
+    rlim,tlim = np.max(array, axis=0)
+    nrow = int((tlim - blim)*steps)+1
+    ncol = int((rlim - llim)*steps)+1
     
+    AXES = np.meshgrid( np.linspace(llim, rlim, ncol), np.linspace(blim, tlim, nrow)[::-1])
+    grid = np.column_stack([ np.ravel(AXES[i]) for i in range(len(AXES)) ])
+    
+    dists = spatial.distance.cdist(grid, arrayd, metric='euclidean')
+    argmindist = np.argmin(dists, axis=1)
+    minmask = np.min(dists, axis=1) < 1/(eps*steps)
+    return nrow, ncol, grid, minmask, argmindist[minmask]
+    
+
 def reduce_num_of_diagrams(orig_diags, rescale, focus_dim, norm_type, minlife=1, keepall=False):
     
     num_diags = len(orig_diags)*len(orig_diags[0])
