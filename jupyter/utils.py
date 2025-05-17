@@ -66,9 +66,7 @@ def get_range_gene_values(arginput=None, meta=None, startval=0):
         
     return Vals
 
-pxs = 75
-plot_pxbar = np.s_[-25:-5, 5 : (5 + pxs)]
-def get_cell_img(cidx, metacell, label, lnuc, nnuc, PP=10, pxbar=False):
+def get_cell_img(cidx, metacell, label, lnuc, nnuc, PP=10):
     s_ = (np.s_[max([0, metacell.loc[cidx, 'y0'] - PP]) : min([label.shape[0], metacell.loc[cidx, 'y1'] + PP])],
           np.s_[max([1, metacell.loc[cidx, 'x0'] - PP]) : min([label.shape[1], metacell.loc[cidx, 'x1'] + PP])])
     extent = (s_[1].start, s_[1].stop, s_[0].start, s_[0].stop)
@@ -79,9 +77,6 @@ def get_cell_img(cidx, metacell, label, lnuc, nnuc, PP=10, pxbar=False):
     cell[ lnuc[s_] > 0 ] = lnuc[s_][lnuc[s_] > 0]
     cell[ label[s_] == 0 ] = -1
     
-    if pxbar:
-        cell[plot_pxbar] = -1
-
     return cell, extent
     
 # ======================================================================
@@ -563,17 +558,6 @@ def cardinal_distance_transform(img):
 
     return top[pss], right[pss], bottom[pss], left[pss]
 
-def signifscalar(scalar, limits=[1e-5,1e-4,1e-3,1e-2]):
-    if scalar <= limits[0]:
-        return '****'
-    if scalar <= limits[1]:
-        return '***'
-    if scalar <= limits[2]:
-        return '**'
-    if scalar <= limits[3]:
-        return '*'
-    return ''
-
 def get_largest_element(comp, thr=0.1, minsize=None, outlabels=False, verbose=False):
     tot = np.sum(comp > 0)
     labels,num = ndimage.label(comp, structure=ndimage.generate_binary_structure(comp.ndim, 1))
@@ -613,3 +597,14 @@ def borderize(img, neighbor_structure=None):
     
     return border
 
+def star_signif(pvalue, mn=2, mx=4):
+    signif = ''
+    tol0 = 10**(-mn)
+    counter = 0
+    while (pvalue <= tol0) and (counter < mx):
+        signif += '*'
+        tol0 *= 0.1
+        counter += 1
+    if counter == 0:
+        signif = 'n.s.'
+    return signif

@@ -1,14 +1,12 @@
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 
 import numpy as np
 import pandas as pd
 import argparse
-import itertools
 
 import json
-
-from glob import glob
 import os
 
 import utils
@@ -16,11 +14,11 @@ import persim
 
 import tifffile as tf
 from KDEpy import FFTKDE
-from scipy import ndimage,stats,spatial
+from scipy import ndimage,stats
 
 seed = 42
 ndims = 3
-fs = 12
+fs = 15
 PP = 6
 dpi = 96
 
@@ -39,9 +37,14 @@ normtype = 'both'
 
 BW = [10,15,20,25,30]
 SCALES = [8,16,24,32,40,48]
-smcolumns=['PC 1', 'PC 2', 'N', 'Density', 'X', 'Y', 'Cell Size', 'Eccentricity']
+smcolumns=['PC 1', 'PC 2', 'N', 'Density', 'N(05G203100)', 'X', 'Y', 'Cell Size', 'Eccentricity']
 crcolumns=['slope', 'intercept', 'rvalue', 'pvalue', 'stderr', 'intercept_stderr', 'spearson', 'ppearson', 'sspearman', 'pspearman']
 cnames = ['N', 'Density', 'PC 1', 'PC 2']
+
+stepsize = 3
+sbkw = dict(label='', size=pxs, loc='upper left', pad=0.5, color='k', frameon=False, size_vertical=7.5)
+sbkw1 = dict(label='', size=pxs/stepsize, loc='upper left', pad=0.5, color='lime', frameon=False, size_vertical=7.5/stepsize)
+rtkw = dict(ha='right', va='bottom', c='navy', bbox=dict(facecolor='cornsilk', alpha=0.75, boxstyle=mpl.patches.BoxStyle("Square", pad=0.05)))
 
 k = 0
 vs = ['' for _ in range( len(smcolumns)*( len(smcolumns) - 1)//2) ]
@@ -50,6 +53,9 @@ for i in range(len(smcolumns)-1):
         vs[k] = '{}-vs-{}'.format(smcolumns[i] , smcolumns[j] )
         k += 1
 
+hdims = np.array([1,2])
+Pname = ' [$' + ' \\oplus '.join(['H_{}'.format(k) for k in hdims]) + '$]'
+pname = 'H' + '+'.join(hdims.astype(str))
 
 def main():
     
@@ -159,7 +165,7 @@ def main():
         
         transfocus = transcell.loc[ np.atleast_1d( transcriptomes[Genes[ tidx ]]), Cells]
         ratios = utils.normalize_counts(transfocus, normtype)
-        genes = '_-_'.join(sorted([ g.split('_')[-1] for g in ratios.index ]))
+        genes = '_-_'.join(sorted([ g.replace('GLYMA_', 'Glyma.') for g in ratios.index ]))
         print(genes, 'Max ratio by {}:\t{:.2f}%'.format(normtype, 100*np.max(ratios) ) )
         
         for bw in BW:
@@ -218,17 +224,15 @@ def main():
                         full_img[gene][cidx] = np.asarray( [ pimgr.transform( lt_diags[gene][cidx][k] , skew=False) for k in range(len(lt_diags[gene][cidx])) ])
                         full_img[gene][cidx][ full_img[gene][cidx] < 0 ] = 0
 
-                bname = isrc + '{}_bw{}_{}level'.format(genes, bw, level) + os.sep + 'PI_scale{}_'.format(SCALE)
+                bname = isrc + '{}_bw{}_{}level'.format(genes.replace('Glyma.',''), bw, level) + os.sep + 'PI_scale{}_'.format(SCALE)
                 Bname = genes + ' PIs: KDE bandwidth {}. {}level persistence. Scale {}'.format(bw, level.title(), SCALE)
                 print(bname, Bname, sep='\n')
                 
                 # PCA sampling
                 
-                hdims = np.array([1,2])
-                Pname = ' [$' + ' \\oplus '.join(['H_{}'.format(k) for k in hdims]) + '$]'
-                pname = 'H' + '+'.join(hdims.astype(str))
                 embedding = pd.read_csv(bname + 'pca.csv')
                 zero_val = embedding.iloc[-1, 2:].values
+                zs = [0, 0, zero_val[0], zero_val[1]]
                 embedding = embedding.iloc[:-1]
                 pca = embedding.iloc[:,2:4].values
                 
@@ -239,6 +243,10 @@ def main():
                     nrow, ncol, grid, minmask, reps = utils.grid_representatives(grid0[minmask0], pca, steps)
                     steps -= 0.05
                     
+                Ns = transcell.loc[gene, embedding.loc[reps, 'ndimage_ID'].values].values
+                rhos = Ns/metacell.loc[embedding.loc[reps, 'ndimage_ID'], 'cyto_area'].values
+                expo = (np.floor(np.log10(rhos))).astype(int)
+                base = np.round(rhos*np.power(10., -expo),1)                    
                 print(steps, nrow, ncol, len(reps), sep='\t')
     
                 # Gridded PCA
@@ -279,7 +287,6 @@ def main():
                         for k in range(1, len(hdims)):
                             ax[j].axvline(k*extent[1] - .5, c='white', lw=0.5)
                         ax[j].scatter(lt_coll[i][:,0], lt_coll[i][:,1], c='w', marker='o', s=10, edgecolor='k', linewidth=0.5)
-                        #ax[j].set_title(np.round(grid[minmask][i],2), fontsize=8)
 
                     for j in np.nonzero(~minmask)[0]:
                         fig.delaxes(ax[j])
@@ -287,7 +294,7 @@ def main():
                     fig.suptitle(Bname, fontsize=1.2*fs)
                     fig.tight_layout();
                     print(filename)
-                    plt.savefig(filename + '.png', dpi=dpi, bbox_inches='tight', format='png')
+                    plt.savefig(filename, dpi=dpi, bbox_inches='tight', format='png')
                     plt.close()
         
                 # Pre-computing KDEs
@@ -299,7 +306,7 @@ def main():
                         gene, cidx = embedding.loc[reps[i], ['gene', 'ndimage_ID']]
                         hcoords[i] = translocs[gene].loc[ translocs[gene]['cidx'] == cidx , ['X', 'Y', 'Z'] ].values.T
                         
-                        hcells[i], hextent[i] = utils.get_cell_img(cidx, metacell, label, lnuc, nnuc, PP=6, pxbar=False)
+                        hcells[i], hextent[i] = utils.get_cell_img(cidx, metacell, label, lnuc, nnuc, PP=6)
                         s_ = (np.s_[hextent[i][2]:hextent[i][3]], np.s_[hextent[i][0]:hextent[i][1]])
                         
                         axes, kgrid, kdegmask, cgrid, outside_walls = utils.cell_grid_preparation(cidx, hcells[i], label[s_], hextent[i], zmax, stepsize, cell_nuc, exclude_nuclei=exclude_nuclei)
@@ -309,28 +316,24 @@ def main():
                         kde[outside_walls] = 0
                         kde = kde/(np.sum(kde)*(stepsize**len(hcoords[i])))
                         kde = kde.reshape( list(map(len, axes))[::-1], order='F')
-                        
-                        hkdes[i] = kde * ratios.loc[gene,cidx]
-                        hcells[i][plot_pxbar] = -1
+                        hkdes[i] = np.max(kde * ratios.loc[gene,cidx], axis=0)
 
                     # Gridded PCA: Cells
                 
-                    Ns = transcell.loc[gene, embedding.loc[reps, 'ndimage_ID'].values].values
                     fig, ax = plt.subplots( nrow, ncol, figsize=(10, 1.55*nrow), sharex=False, sharey=False)
                     ax = np.atleast_1d(ax).ravel();
 
                     for i, j in enumerate(np.nonzero(minmask)[0]):
                         ax[j].imshow(hcells[i]+1, cmap=cellular_cmap, origin='lower', extent=hextent[i], vmin=0, vmax=nnuc+2);
-                        ax[j].scatter(*hcoords[i][:2], color='r', marker='o', alpha=0.5, s=int(4e6/hcells[i].size))
+                        ax[j].scatter(*hcoords[i][:2], color='r', marker='o', alpha=min([0.5,75/Ns[i]]), s=int(4e6/hcells[i].size))
                         ax[j].set_facecolor(wong[2])
                         ax[j].tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
-                        ax[j].text(hextent[i][1], hextent[i][2], Ns[i], ha='right', va='bottom', c='navy')
+                        ax[j].set_aspect('equal','datalim')
+                        ax[j].text(0.99,0, Ns[i], transform=ax[j].transAxes, **rtkw)
+                        ax[j].add_artist(AnchoredSizeBar(ax[j].transData, **sbkw))
 
                     for j in np.nonzero(~minmask)[0]:
                         fig.delaxes(ax[j])
-
-                    for a in ax.ravel():
-                        a.set_aspect('equal','datalim')
 
                     fig.suptitle(Bname, fontsize=1.2*fs)
                     fig.tight_layout();
@@ -346,15 +349,15 @@ def main():
                     ax = np.atleast_1d(ax).ravel();
 
                     for i, j in enumerate(np.nonzero(minmask)[0]):
-                        ax[j].imshow(np.max(hkdes[i], axis=0), origin='lower', cmap=Cmap, vmin=0, vmax=kmax, zorder=1)
+                        ax[j].imshow(hkdes[i], origin='lower', cmap=Cmap, vmin=0, vmax=kmax, zorder=1)
                         ax[j].set_facecolor( mpl.colormaps[Cmap](0) )
                         ax[j].tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
+                        ax[j].set_aspect('equal','datalim')
+                        ax[j].text(0.99,0, '{:.1f}$\\times$10$^{{{}}}$'.format(base[i], expo[i]), transform=ax[j].transAxes, **rtkw)
+                        ax[j].add_artist(AnchoredSizeBar(ax[j].transData, **sbkw1))
 
                     for j in np.nonzero(~minmask)[0]:
                         fig.delaxes(ax[j])
-
-                    for a in ax.ravel():
-                        a.set_aspect('equal','datalim')
 
                     fig.suptitle(Bname, fontsize=1.2*fs)
                     fig.tight_layout();
@@ -370,7 +373,7 @@ def main():
                 density.name = 'density'
                 NN = transcell.loc[ratios.index[0], Cells].copy()
                 NN.name = 'N'
-                summary0 = summary0.join(pd.concat([NN, density], axis=1), how='outer')
+                summary0 = summary0.join(pd.concat([NN, density], axis=1), how='outer').join(transcell.loc['GLYMA_05G203100', Cells] + 1)
                 summary0 = summary0.join(metacell.loc[Cells, ['ndimage_comX','ndimage_comY','cyto_area']], how='outer')
                 summary0.iloc[ pd.isna(summary0.iloc[:,0]).values , :2] = zero_val[:2]
                 summary0 = summary0.join(metaecc['eccentricity'].max() - metaecc.loc[Cells, 'eccentricity'])
@@ -395,11 +398,11 @@ def main():
                     
                 filename = bname + 'corr_summary.csv'
                 if rewrite or (not os.path.isfile(filename)):
-                    corr.to_csv(filename, index=False)
+                    corr.to_csv(filename, index=True, index_label='Comparison')
                 
                 filename = bname + 'corr0_summary.csv'
                 if rewrite or (not os.path.isfile(filename)):
-                    corr0.to_csv(filename, index=False)
+                    corr0.to_csv(filename, index=True, index_label='Comparison')
                     
                 filename = bname + 'nodule_locations.png'
                 if rewrite or (not os.path.isfile(filename)):
@@ -413,7 +416,7 @@ def main():
                         zmask = c != zs[i] 
                         vmax = utils.maximum_qq_size(c[zmask], alpha=0.25, iqr_factor=1.5)
                         vmin = utils.minimum_qq_size(c[zmask], alpha=0.25, iqr_factor=1.5)
-                        delta = 0.5*(vmax-vmin)
+                        delta = 0.25*(vmax-vmin)
                         vmax += delta
 
                         ax[i].scatter(wc[1], wc[0], c='#808080', marker='.', s=0.5, zorder=1)
@@ -424,46 +427,96 @@ def main():
                         ax[i].set_facecolor('snow')
                         ax[i].tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
                         ax[i].set_title(c.name, fontsize=fs)
-                    ax[0].set_ylabel(ratios.index[0], fontsize=fs)
                     fig.suptitle(Bname, fontsize=1.2*fs)
                     fig.tight_layout()
                     print(filename)
                     plt.savefig(filename, dpi=dpi, bbox_inches='tight', format='png')
                     plt.close()
                     
-                filename = bname + 'ecc_correlations.png'
+                filename = bname + 'eccentricity_correlations.png'
                 if rewrite or (not os.path.isfile(filename)):
                 
-                    ecc = summary0['Eccentricity']
-                    fig, ax = plt.subplots(1, 4, figsize=(12,3.75), sharex=False, sharey=True)
-                    ax = np.atleast_1d(ax).ravel(); i = 0
+                    for yaxis,yscale in zip(['Eccentricity', 'N(05G203100)'],['linear','log']):
+                        
+                        filename = bname + yaxis.replace('(','').replace(')','').lower() + '_correlations.png'
+                        ecc = summary0[yaxis]
+                        fig, ax = plt.subplots(1, 4, figsize=(12,3.75), sharex=False, sharey=True)
+                        ax = np.atleast_1d(ax).ravel(); i = 0
+                        
+                        for i,cname in enumerate(cnames):
+                            c = summary0.loc[:, cname]
+                            zmask = c != zs[i] 
+                            vmax = utils.maximum_qq_size(c[zmask], alpha=0.25, iqr_factor=1.5)
+                            vmin = utils.minimum_qq_size(c[zmask], alpha=0.25, iqr_factor=1.5)
+                            delta = 0.25*(vmax-vmin)
+                            vmax += delta
+                        
+                            ax[i].scatter(c[zmask], ecc[zmask], c=c[zmask]+delta, marker='o', cmap=Cmap, s=s,
+                                          edgecolor='k', linewidth=0.5, zorder=3, vmax=vmax, vmin=vmin)
+                            ax[i].scatter(c[~zmask], ecc[~zmask], c='k', marker='D', s=s, edgecolor='w', zorder=2)
+                            ax[i].set_facecolor('snow')
+                            ax[i].tick_params(labelsize=0.9*fs)
+                            ax[i].set_xlabel(c.name, fontsize=fs)
+                            ax[i].set_xlim(c.min(), 1.25*vmax)
+                            ax[i].set_yscale(yscale)
+                            r,p = corr.loc[cname + '-vs-' + ecc.name, ['sspearman', 'pspearman'] ]
+                            ll = 'r$_s = ${:.2f} [{}]'.format(r, utils.star_signif(p, mx=3))
+                            ax[i].set_title(ll, fontsize=fs)
+                        
+                        ax[0].set_ylabel(ecc.name, fontsize=fs)
+                        fig.suptitle(Bname, fontsize=1.2*fs)
+                        fig.tight_layout()
+                        print(filename)
+                        plt.savefig(filename, dpi=dpi, bbox_inches='tight', format='png')
+                        plt.close()
+                        
+                    filename = bname + 'fulleccentricity_correlations.png'
+                    if rewrite or (not os.path.isfile(filename)):
+                        ecc = summary0['Eccentricity']
+                        fig, ax = plt.subplots(2, 4, figsize=(13.5,7), sharex=False, sharey=False)
 
-                    for i,cname in enumerate(cnames):
-                        c = summary0.loc[:, cname]
-                        zmask = c != zs[i] 
-                        vmax = utils.maximum_qq_size(c[zmask], alpha=0.25, iqr_factor=1.5)
-                        vmin = utils.minimum_qq_size(c[zmask], alpha=0.25, iqr_factor=1.5)
-                        delta = 0.5*(vmax-vmin)
-                        vmax += delta
+                        for i,cname in enumerate(cnames):
+                            j = 0
+                            c = summary0.loc[:, cname]
+                            zmask = c != zs[i] 
+                            vmax = utils.maximum_qq_size(c[zmask], alpha=0.25, iqr_factor=1.5)
+                            vmin = utils.minimum_qq_size(c[zmask], alpha=0.25, iqr_factor=1.5)
+                            delta = 0.25*(vmax-vmin)
+                            vmax += delta
 
-                        ax[i].scatter(c[zmask], ecc[zmask], c=c[zmask]+delta, marker='o', cmap=Cmap, s=s,
-                                      edgecolor='k', linewidth=0.5, zorder=3, vmax=vmax, vmin=vmin)
-                        ax[i].scatter(c[~zmask], ecc[~zmask], c='k', marker='D', s=s, edgecolor='w', zorder=2)
-                        ax[i].set_facecolor('snow')
-                        #ax[i].tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
-                        ax[i].set_xlabel(c.name, fontsize=fs)
-                        ax[i].set_xlim(c.min(), 1.25*vmax)
+                            ax[j,i].scatter(wc[1], wc[0], c='#808080', marker='.', s=0.5, zorder=1)
+                            ax[j,i].scatter(*summary0.loc[~zmask,['X','Y']].T.values, c='k', marker='D', s=0.75*s, edgecolor='#808080', zorder=2)
+                            ax[j,i].scatter(*summary0.loc[zmask,['X','Y']].T.values, c=c[zmask]+delta, marker='o', cmap=Cmap, s=s,
+                                          edgecolor='k', linewidth=0.5, zorder=3, vmax=vmax, vmin=vmin)
+                            ax[j,i].tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
+                            r,p = corr.loc[cname + '-vs-' + ecc.name, ['sspearman', 'pspearman'] ]
+                            ll = 'r$_s = ${:.2f} [{}]'.format(r, utils.star_signif(p, mx=3))
+                            ax[j,i].text(0.99,0, ll, transform=ax[j,i].transAxes, fontsize=fs, **rtkw)
+                            
+                            j = 1
+                            ax[j,i].scatter(c[zmask], ecc[zmask], c=c[zmask]+delta, marker='o', cmap=Cmap, s=s, edgecolor='k', linewidth=0.5, vmax=vmax, vmin=vmin)
+                            ax[j,i].scatter(c[~zmask], ecc[~zmask], c='k', marker='D', s=s, edgecolor='w', zorder=2)
+                            ax[j,i].set_xlim(c.min(), 1.25*vmax)
+                            ax[j,i].set_ylim(0, 1.05*ecc.max())
+                            ax[j,i].tick_params(bottom=True, labelbottom=True, left=True, labelleft=False)
+                            ax[j,i].set_xlabel(c.name, fontsize=fs)
 
-                        r,p = corr.loc[cname + '-vs-' + ecc.name, ['sspearman', 'pspearman'] ]
-                        expo = int(np.ceil(np.log10(p)))
-                        ll = '$\\rho = ${:.2f} [p-val $< 10^{{{}}}$]'.format(r, expo)
-                        ax[i].set_title(ll, fontsize=fs)
-                    ax[0].set_ylabel(ecc.name, fontsize=fs)
-                    fig.suptitle(Bname, fontsize=1.2*fs)
-                    fig.tight_layout()
-                    print(filename)
-                    plt.savefig(filename, dpi=dpi, bbox_inches='tight', format='png')
-                    plt.close()
+                        ax[0,0].set_ylabel('Nodule ' + sample, fontsize=fs)
+                        ax[1,0].tick_params(labelleft=True)
+                        ax[1,0].set_ylabel('Eccentricity [px]', fontsize=fs)
+
+                        for a in ax.ravel():
+                            a.set_facecolor('snow')
+                            a.tick_params(labelsize=0.9*fs)
+
+                        fig.align_ylabels()
+                        fig.suptitle(Bname, fontsize=1.2*fs)
+                        fig.tight_layout()
+                        print(filename)
+                        plt.savefig(filename, dpi=dpi, bbox_inches='tight', format='png')
+                        plt.close()
+                        
+                        
     
     return 0
 

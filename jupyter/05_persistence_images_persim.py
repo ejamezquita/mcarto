@@ -297,6 +297,7 @@ def main():
                         fig.supylabel(ratios.index[0], fontsize=fs)
                         fig.tight_layout();
                         plt.savefig(filename, dpi=dpi, bbox_inches='tight', format='png')
+                        print(filename)
                         plt.close()
                         
                     ### CSVs
@@ -307,6 +308,7 @@ def main():
                         summary = bsummary.join(pd.DataFrame(pca, columns=pcacols))
                         summary.loc[len(summary)] = ['ZERO', 0] + zero_val[0].tolist()
                         summary.to_csv(filename, index=False)
+                        print(filename)
                         minspos = 1.2*summary[pcacols[:2]].min().values
                         
                         ncols = len(ratios)//nrows
@@ -334,6 +336,7 @@ def main():
                         fig.tight_layout();
                         filename = bname + 'pca_' + pname + '.png'
                         plt.savefig(filename, dpi=dpi, bbox_inches='tight', format='png')
+                        print(filename)
                         plt.close()
             
     return 0
