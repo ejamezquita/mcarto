@@ -1,0 +1,45 @@
+\documentclass[
+tikz,
+class=scrartcl,% underlying class which is loaded by standalone
+headinclude,fontsize=24pt,% options used by typearea
+]{standalone}
+
+\storeareas\standalonelayout% save the standalone layout
+\recalctypearea% recalculate the typearea layout
+\edef\savedtextheight{\the\textheight}% save the text height of the typearea layout
+\standalonelayout% restore the standalone layout
+%
+%\tikzset{
+	%  every picture/.append style={
+		%    execute at end picture={%
+			%      \draw[red](current bounding box.north west)
+			%      rectangle
+			%      ++(\the\textwidth,-\savedtextheight);%
+			%}}}
+
+\usepackage{tikz} 
+\usetikzlibrary{
+	fit,
+	positioning,
+	chains,
+	decorations.pathreplacing,
+	plotmarks,
+	arrows.meta
+}
+
+\begin{document}
+	\begin{tikzpicture}[font=\sffamily, inner sep=2pt,
+		caption/.style={scale=1.2, black, inner sep=0, align=center},
+		caption2/.style={scale=0.4, black, inner sep=0},
+		panel/.style={scale=.85, black},
+		listnode/.style={font=\tiny}]
+		
+		\node (k1) at (0,0) {\includegraphics[width=0.16\textwidth]{05G092200_cell_sample.pdf}};
+		\node[anchor=west] (k2) at (k1.east) {\includegraphics[width=0.16\textwidth]{05G216000_cell_sample.pdf}};
+		\node[anchor=west] (k3) at (k2.east) {\includegraphics[width=0.16\textwidth]{12G027400_cell_sample.pdf}};
+		\node[anchor=west] (k4) at (k3.east) {\includegraphics[width=0.16\textwidth]{15G210100_cell_sample.pdf}};
+		\node[anchor=west] (k5) at (k4.east) {\includegraphics[width=0.16\textwidth]{17G185800_cell_sample.pdf}};
+		\node[anchor=west] (k6) at (k5.east) {\includegraphics[width=0.16\textwidth]{17G195900_cell_sample.pdf}};
+		
+	\end{tikzpicture}
+\end{document}
