@@ -567,7 +567,7 @@ def get_largest_element(comp, thr=0.1, minsize=None, outlabels=False, verbose=Fa
     if minsize is None:
         minsize = np.max(hist) + 1
 
-    where = np.where((hist/tot > thr) | (hist > minsize))[0] + 1
+    where = np.where((hist/tot >= thr) | (hist > minsize))[0] + 1
     if verbose:
         print(num,'components\t',len(where),'preserved')
         print(np.sort(hist)[::-1][:20])
