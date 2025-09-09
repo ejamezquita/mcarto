@@ -571,12 +571,13 @@ def get_largest_element(comp, thr=0.1, minsize=None, outlabels=False, verbose=Fa
     if verbose:
         print(num,'components\t',len(where),'preserved')
         print(np.sort(hist)[::-1][:20])
-
-    mask = labels == where[0]
-    for w in where[1:]:
-        mask = mask | (labels == w)
     box0 = comp.copy()
-    box0[~mask] = 0
+    
+    if (len(where) > 0) and (np.sum(labels == where[0]) > 2):
+        mask = labels == where[0]
+        for w in where[1:]:
+            mask = mask | (labels == w)        
+        box0[~mask] = 0        
 
     if outlabels:
         return box0, labels, where
