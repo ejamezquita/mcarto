@@ -609,3 +609,21 @@ def star_signif(pvalue, mn=2, mx=4):
     if counter == 0:
         signif = 'n.s.'
     return signif
+
+def pval_corrections(pvals, method='bh'):
+    bhpvals = dict(zip(pvals.keys(), [dict() for _ in range(len(pvals))]))
+    for key in bhpvals:
+        bhpvals[key] = dict(zip(pvals[key].keys(), [ dict() for _ in range(len(bhpvals[key]))]))
+        for dkey in pvals[key]:
+            bhpvals[key][dkey] = pd.DataFrame(2., index=pvals[key][dkey].index, columns=pvals[key][dkey].index)
+            
+            pv = pvals[key][dkey].values.ravel().copy()
+            pv = stats.false_discovery_control(pv[pv <= 1 ], method=method)
+            
+            idx = 0
+            for i in range(len(bhpvals[key][dkey])-1):
+                for j in range(i+1, len(bhpvals[key][dkey])):
+                    bhpvals[key][dkey].iloc[i,j] = pv[idx]
+                    bhpvals[key][dkey].iloc[j,i] = pv[idx]
+                    idx += 1
+    return bhpvals
