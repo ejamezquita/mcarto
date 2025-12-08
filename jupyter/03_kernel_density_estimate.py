@@ -76,11 +76,11 @@ def main():
     else:
         Levels = [args.level_filtration]
 
-    wsrc = '..' + os.sep + args.cell_wall_directory + os.sep
-    nsrc = '..' + os.sep + args.nuclear_directory + os.sep
-    tsrc = '..' + os.sep + args.location_directory + os.sep + sample + os.sep
-    ksrc = '..' + os.sep + args.kde_directory + os.sep + sample + os.sep
-    gsrc = '..' + os.sep + args.geometry_directory + os.sep + sample + os.sep
+    wsrc = os.pardir + os.sep + args.cell_wall_directory + os.sep
+    nsrc = os.pardir + os.sep + args.nuclear_directory + os.sep
+    tsrc = os.pardir + os.sep + args.location_directory + os.sep + sample + os.sep
+    ksrc = os.pardir + os.sep + args.kde_directory + os.sep + sample + os.sep
+    gsrc = os.pardir + os.sep + args.geometry_directory + os.sep + sample + os.sep
 
     metacell = pd.read_csv(ksrc + sample + '_cells_metadata.csv', index_col = 'ndimage_cellID')
     metatrans = pd.read_csv(ksrc + sample + '_transcripts_metadata.csv', index_col='gene')
@@ -111,7 +111,7 @@ def main():
             translocs[i] = pd.read_csv(filename, header=None, names=['X', 'Y', 'Z'])
     else:
         transcell = pd.read_csv(ksrc + sample + '_transcells_metadata_w_nucleus.csv', index_col='gene').rename(columns=int)
-        tsrc = '..' + os.sep + 'Bacteria Info for Erik' + os.sep
+        tsrc = os.pardir + os.sep + 'Bacteria Info for Erik' + os.sep
         for i in range(len(transcriptomes)):
             filename = tsrc + transcriptomes[i] + '_v2.txt'
             translocs[i] = pd.read_csv(filename, sep='\t')
@@ -125,7 +125,7 @@ def main():
     zmax = np.max(tlocs['Z']+stepsize)
 
     for level in Levels:
-        dst = '..' + os.sep + level + 'level' + os.sep + sample + os.sep
+        dst = os.pardir + os.sep + level + 'level' + os.sep + sample + os.sep
         if not os.path.isdir(dst):
             os.mkdir(dst)
         for gidx in Genes:
@@ -154,7 +154,7 @@ def main():
             foo = gsrc + '{}/{}_bins_peripherality_c{:06d}.csv'.format(transcriptomes[tidx], KBINS_NO-1, cidx)
             isgfile[foo] = os.path.isfile(foo) | (transcell.loc[transcriptomes[tidx], cidx] <= min_mrna_num)
             
-            tdst = '..' + os.sep + level + 'level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep
+            tdst = os.pardir + os.sep + level + 'level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep
             for b in range(len(BW)):
                 foo = tdst + transcriptomes[tidx] + '_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(level,PP,stepsize,BW[b],cidx)
                 ispfile[foo] = os.path.isfile(foo) | (transcell.loc[transcriptomes[tidx], cidx] <= min_mrna_num)
@@ -190,7 +190,7 @@ def main():
                 if transcell.loc[transcriptomes[tidx], cidx] > min_mrna_num:
                     
                     coords = translocs[tidx].loc[ translocs[tidx]['cidx'] == cidx , ['X','Y', 'Z'] ].values.T
-                    tdst = '..' + os.sep + level + 'level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep
+                    tdst = os.pardir + os.sep + level + 'level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep
                     perifile = gsrc + '{}/{}_bins_peripherality_c{:06d}.csv'.format(transcriptomes[tidx], KBINS_NO-1, cidx)
                     peripherality = pd.DataFrame(index=range(1,KBINS_NO), columns=pericols)
                             
