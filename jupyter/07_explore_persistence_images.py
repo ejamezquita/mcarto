@@ -103,11 +103,11 @@ def main():
     SCALE = args.scale
     bw = args.bandwidth
         
-    wsrc = '..' + os.sep + args.cell_wall_directory + os.sep
-    nsrc = '..' + os.sep + args.nuclear_directory + os.sep
-    tsrc = '..' + os.sep + args.location_directory + os.sep
-    ksrc = '..' + os.sep + args.kde_directory + os.sep
-    isrc = '..' + os.sep + args.pca_directory + os.sep 
+    wsrc = 'os.pardir' + os.sep + args.cell_wall_directory + os.sep
+    nsrc = 'os.pardir' + os.sep + args.nuclear_directory + os.sep
+    tsrc = 'os.pardir' + os.sep + args.location_directory + os.sep
+    ksrc = 'os.pardir' + os.sep + args.kde_directory + os.sep
+    isrc = 'os.pardir' + os.sep + args.pca_directory + os.sep 
 
     isrc += sample + os.sep
     ksrc += sample + os.sep
@@ -155,7 +155,7 @@ def main():
     ratios = utils.normalize_counts(transfocus, normtype)
 
     jsonfiles = [ [ None for j in range(ratios.shape[1]) ] for i in range(ratios.shape[0]) ]
-    gsrc = '../{}level/'.format(level) + sample + os.sep
+    gsrc = os.pardir + os.sep + '{}level' + os.sep.format(level) + sample + os.sep
     for i in range(len(jsonfiles)):
         foo = '{}{}/{}_-_{}_p{}_s{}_bw{}_c{:06d}.json'
         for j in range(len(jsonfiles[0])):

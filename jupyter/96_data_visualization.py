@@ -19,7 +19,7 @@ def cartesian_product(*arrays):
     dtype = np.result_type(*arrays)
     arr = np.empty([len(a) for a in arrays] + [la], dtype=dtype)
     for i, a in enumerate(np.ix_(*arrays)):
-        arr[...,i] = a
+        arr[os.pardir.,i] = a
     return arr.reshape(-1, la)
 
 def get_MDS(filebase, bottle, mds_params):
@@ -47,22 +47,22 @@ def main():
     marker[-1] = '*'
 
     levels = ['sublevel', 'superlevel']
-    ksrc = '../kde/'
-    gsrc = '../gd_trans/'
+    ksrc = os.pardir + os.sep + 'kde' + os.sep
+    gsrc = os.pardir + os.sep + 'gd_trans' + os.sep
     sample = args.sample
     selection = 'all'
     distance = 'bottleneck'
     
-    wall = tf.imread('../cell_dams/' + sample + '_dams.tif').astype(bool)
-    wall[tf.imread('../nuclear_mask/' + sample + '_EDT.tif') < 2] = False
+    wall = tf.imread(os.pardir + os.sep + 'cell_dams' + os.sep + sample + '_dams.tif').astype(bool)
+    wall[tf.imread(os.pardir + os.sep + 'nuclear_mask' + os.sep + sample + '_EDT.tif') < 2] = False
     wcoords = np.asarray(np.nonzero(~wall))
     wallshape = wall.shape
     wc = wcoords[:, ~np.all(wcoords%50, axis=0)]
 
-    tsrc = gsrc + sample + '/'
+    tsrc = gsrc + sample + '' + os.sep
 
     ksrc += sample + os.sep
-    dst = '../distances/'
+    dst = os.pardir + os.sep + 'distances' + os.sep
     dst += sample + os.sep
     if not os.path.isdir(dst):
         os.mkdir(dst)
@@ -70,7 +70,7 @@ def main():
     metacell = pd.read_csv(ksrc + sample + '_cells_metadata.csv')
     metatrans = pd.read_csv(ksrc + sample + '_transcripts_metadata.csv')
     transcell = pd.read_csv(ksrc + sample + '_transcells_metadata.csv')
-    transcriptomes = sorted([foo.split('/')[-2] for foo in glob(ksrc + '*/')])
+    transcriptomes = sorted([foo.split('' + os.sep)[-2] for foo in glob(ksrc + '*' + os.sep)])
     print(len(transcriptomes), 'transcriptomes')
     dbscan_params = {'eps':10, 'min_samples':3}
 

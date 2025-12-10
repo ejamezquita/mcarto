@@ -15,6 +15,18 @@ import json
 # PART 0
 # ======================================================================
 
+def hull_contained(x, convexhull, eps=np.finfo(np.float32).eps):
+  # The hull is defined as all points x for which Ax + b <= 0.
+  # We compare to a small positive value to account for floating
+  # point issues.
+  #
+  # Assuming x is shape (m, d), output is boolean shape (m,).
+  # A is shape (f, d) and b is shape (f, 1).
+    A, b = convexhull.equations[:, :-1], convexhull.equations[:, -1:]
+
+    return np.all(np.asarray(x) @ A.T + b.T < eps, axis=1)
+
+
 def is_type_tryexcept(s, testtype=int):
     """ Returns True if string is a number. """
     try:
@@ -194,7 +206,7 @@ def celllocs_read(filename):
     celllocs = pd.read_csv(filename)
     sel = [0,3,4,5,6,7,8,9]
     celllocs = celllocs.iloc[~np.any(celllocs.iloc[:, :5].isnull().values, axis=1)]
-    celllocs = celllocs[celllocs['Cell.Area..px.'] > 9]
+    celllocs = celllocs[celllocs['Cell.Areaos.pardirpx.'] > 9]
     celllocs = celllocs.astype(dict(zip(celllocs.columns[np.array(sel)], [int for i in range(len(sel))])))
     return celllocs
 
@@ -204,8 +216,8 @@ def match_original_ndimage(celllocs, wall, label, cellnum):
     cdist = spatial.distance.cdist(np.flip(cnuclei, axis=1), dcoords, metric='euclidean')
     argmatches = np.argmin(cdist, axis=1)
     matches = np.min(cdist, axis=1)
-    orig_cellID = celllocs['Cell.ID..'].values[argmatches]
-    orig_cellID[ matches > 5+0.1*(np.sqrt(celllocs.iloc[argmatches].loc[:, 'Cell.Area..px.'])) ] = 0
+    orig_cellID = celllocs['Cell.IDos.pardir'].values[argmatches]
+    orig_cellID[ matches > 5+0.1*(np.sqrt(celllocs.iloc[argmatches].loc[:, 'Cell.Areaos.pardirpx.'])) ] = 0
 
     return dcoords, cnuclei, argmatches, orig_cellID
 

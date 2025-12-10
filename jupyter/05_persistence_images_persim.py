@@ -95,12 +95,12 @@ def main():
     else:
         BW = [args.bandwidth]
 
-    wsrc = '..' + os.sep + args.cell_wall_directory + os.sep
-    nsrc = '..' + os.sep + args.nuclear_directory + os.sep
-    tsrc = '..' + os.sep + args.location_directory + os.sep + sample + os.sep
-    ksrc = '..' + os.sep + args.kde_directory + os.sep + sample + os.sep
-    gsrc = '..' + os.sep + level + 'level' + os.sep + sample + os.sep
-    dst = '..' + os.sep + dest_directory + os.sep + sample + os.sep
+    wsrc = 'os.pardir' + os.sep + args.cell_wall_directory + os.sep
+    nsrc = 'os.pardir' + os.sep + args.nuclear_directory + os.sep
+    tsrc = 'os.pardir' + os.sep + args.location_directory + os.sep + sample + os.sep
+    ksrc = 'os.pardir' + os.sep + args.kde_directory + os.sep + sample + os.sep
+    gsrc = 'os.pardir' + os.sep + level + 'level' + os.sep + sample + os.sep
+    dst = 'os.pardir' + os.sep + dest_directory + os.sep + sample + os.sep
 
     metacell = pd.read_csv(ksrc + sample + '_cells_metadata.csv', index_col='ndimage_cellID')
     

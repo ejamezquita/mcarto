@@ -48,10 +48,10 @@ def main():
     args = parser.parse_args()
 
     rewrite = args.rewrite_results
-    wsrc = '..' + os.sep + args.cell_wall_directory + os.sep
-    nsrc = '..' + os.sep + args.nuclear_directory + os.sep
-    csrc = '..' + os.sep + args.initial_data_directory + os.sep
-    dst = '..' + os.sep + args.location_directory + os.sep
+    wsrc = 'os.pardir' + os.sep + args.cell_wall_directory + os.sep
+    nsrc = 'os.pardir' + os.sep + args.nuclear_directory + os.sep
+    csrc = 'os.pardir' + os.sep + args.initial_data_directory + os.sep
+    dst = 'os.pardir' + os.sep + args.location_directory + os.sep
     
     sample = args.sample
     radius = args.radius
@@ -71,7 +71,7 @@ def main():
     label, cellnum = ndimage.label(wall, struc1)
     print('Detected',cellnum,'cells')
 
-    filenames = sorted(glob('../Bacteria Info for Erik/*_v2.txt'))
+    filenames = sorted(glob(os.pardir + os.sep + 'Bacteria Info for Erik/*_v2.txt'))
 
     transcriptomes = [ None for _ in range(len(filenames)) ]
     translocs = [ None for _ in range(len(filenames)) ]

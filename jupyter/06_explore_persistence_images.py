@@ -110,11 +110,11 @@ def main():
     exclude_nuclei = not args.include_nuclei_mrna
     print('Exclude nuclear mRNA:', exclude_nuclei)
         
-    wsrc = '..' + os.sep + args.cell_wall_directory + os.sep
-    nsrc = '..' + os.sep + args.nuclear_directory + os.sep
-    ksrc = '..' + os.sep + args.kde_directory + os.sep + sample + os.sep
-    isrc = '..' + os.sep + args.pca_directory + os.sep + sample + os.sep
-    gsrc = '..' + os.sep + level + 'level' + os.sep + sample + os.sep
+    wsrc = 'os.pardir' + os.sep + args.cell_wall_directory + os.sep
+    nsrc = 'os.pardir' + os.sep + args.nuclear_directory + os.sep
+    ksrc = 'os.pardir' + os.sep + args.kde_directory + os.sep + sample + os.sep
+    isrc = 'os.pardir' + os.sep + args.pca_directory + os.sep + sample + os.sep
+    gsrc = 'os.pardir' + os.sep + level + 'level' + os.sep + sample + os.sep
 
     metacell = pd.read_csv(ksrc + sample + '_cells_metadata.csv', index_col='ndimage_cellID')
     metaecc = pd.read_csv(ksrc + sample + '_nodule_root_eccentricity.csv', index_col='ndimage_cellID')
@@ -135,11 +135,11 @@ def main():
     cellular_cmap = mpl.colors.ListedColormap(foo)
 
     if exclude_nuclei:
-        filenameb = '..' + os.sep + 'translocs' + os.sep + sample + os.sep + 'location_corrected_D2_-_{}.csv'
+        filenameb = 'os.pardir' + os.sep + 'translocs' + os.sep + sample + os.sep + 'location_corrected_D2_-_{}.csv'
         ex_nuclei = ''
         pdkw = {'header':None, 'names':['X', 'Y', 'Z']}
     else:
-        filenameb = '..' + os.sep + 'Bacteria Info for Erik' + os.sep + '{}_v2.txt'
+        filenameb = 'os.pardir' + os.sep + 'Bacteria Info for Erik' + os.sep + '{}_v2.txt'
         ex_nuclei = '_w_nucleus'
         pdkw = {'sep':'\t'}
 

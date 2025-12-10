@@ -36,9 +36,9 @@ def get_diagrams(jsonfiles, ndims, remove_inf = False):
 stepsize, PP, bw = 3,6,10
 ndims = 3
 minlife = 8
-wsrc = '../cell_dams/'
-nsrc = '../nuclear_mask/'
-tsrc = '../translocs/'
+wsrc = os.pardir + os.sep + 'cell_dams' + os.sep
+nsrc = os.pardir + os.sep + 'nuclear_mask' + os.sep
+tsrc = os.pardir + os.sep + 'translocs' + os.sep
 
 
 def main():
@@ -57,8 +57,8 @@ def main():
     endrow = args.cfinish
     normtype = args.normtype
 
-    gsrc = '../{}level/'.format(level)
-    ksrc = '../kde/'
+    gsrc = os.pardir + os.sep + '{}level' + os.sep.format(level)
+    ksrc = os.pardir + os.sep + 'kde' + os.sep
     
     ksrc += sample + os.sep
     gsrc += sample + os.sep
@@ -71,11 +71,11 @@ def main():
     TT = ['GLYMA_05G092200','GLYMA_17G195900']
     tidxs = np.array([np.argwhere(transcriptomes == TT[i])[0][0] for i in range(len(TT))])
 
-    dst = '../distance/{}/{}_vs_{}_{}/'.format(sample, *transcriptomes[tidxs], normtype)
+    dst = os.pardir + os.sep + 'distance/{}/{}_vs_{}_{}' + os.sep.format(sample, *transcriptomes[tidxs], normtype)
     if not os.path.isdir(dst):
         os.mkdir(dst)
 
-    focus = pd.read_csv('../data/D2_data/scattersutton.csv')
+    focus = pd.read_csv(os.pardir + os.sep + 'data/D2_data/scattersutton.csv')
     focus = focus[ focus['Bact'] == 'Infected' ]
     print(focus.shape)
 
