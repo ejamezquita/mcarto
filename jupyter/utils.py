@@ -202,11 +202,11 @@ def correct_shifted_transcripts(cdtlabs, cdtmask, cdtcoords, edtmask, edtvals, l
 # ======================================================================
 
     
-def celllocs_read(filename):
+def celllocs_read(filename, min_cell_size=9):
     celllocs = pd.read_csv(filename)
     sel = [0,3,4,5,6,7,8,9]
     celllocs = celllocs.iloc[~np.any(celllocs.iloc[:, :5].isnull().values, axis=1)]
-    celllocs = celllocs[celllocs['Cell.Areaos.pardirpx.'] > 9]
+    celllocs = celllocs[celllocs['Cell.Area..px.'] > min_cell_size]
     celllocs = celllocs.astype(dict(zip(celllocs.columns[np.array(sel)], [int for i in range(len(sel))])))
     return celllocs
 
@@ -216,8 +216,8 @@ def match_original_ndimage(celllocs, wall, label, cellnum):
     cdist = spatial.distance.cdist(np.flip(cnuclei, axis=1), dcoords, metric='euclidean')
     argmatches = np.argmin(cdist, axis=1)
     matches = np.min(cdist, axis=1)
-    orig_cellID = celllocs['Cell.IDos.pardir'].values[argmatches]
-    orig_cellID[ matches > 5+0.1*(np.sqrt(celllocs.iloc[argmatches].loc[:, 'Cell.Areaos.pardirpx.'])) ] = 0
+    orig_cellID = celllocs['Cell.ID..'].values[argmatches]
+    orig_cellID[ matches > 5+0.1*(np.sqrt(celllocs.iloc[argmatches]['Cell.Area..px.'])) ] = 0
 
     return dcoords, cnuclei, argmatches, orig_cellID
 

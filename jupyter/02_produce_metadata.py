@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import tifffile as tf
 from glob import glob
-from scipy import ndimage, spatial
+from scipy import ndimage
 import argparse
 import utils
 
@@ -46,11 +46,11 @@ def main():
                         help="prior results will be rewritten")
     args = parser.parse_args()
 
-    wsrc = 'os.pardir' + os.sep + args.cell_wall_directory + os.sep
-    nsrc = 'os.pardir' + os.sep + args.nuclear_directory + os.sep
-    csrc = 'os.pardir' + os.sep + args.initial_data_directory + os.sep
-    tsrc = 'os.pardir' + os.sep + args.location_directory + os.sep
-    dst = 'os.pardir' + os.sep + args.kde_directory + os.sep
+    wsrc = os.pardir + os.sep + args.cell_wall_directory + os.sep
+    nsrc = os.pardir + os.sep + args.nuclear_directory + os.sep
+    csrc = os.pardir + os.sep + args.initial_data_directory + os.sep
+    tsrc = os.pardir + os.sep + args.location_directory + os.sep
+    dst = os.pardir + os.sep + args.kde_directory + os.sep
     
     rewrite = args.rewrite_results
     sample = args.sample
@@ -78,7 +78,7 @@ def main():
         objss = ndimage.find_objects(label)
         print('Detected',cellnum,'cells')
         
-        celllocs = utils.celllocs_read(csrc + sample + '_data' + os.sep + transcriptomes[1] + '' + os.sep + transcriptomes[1] + ' - localization results by cell.csv')
+        celllocs = utils.celllocs_read(csrc + sample + '_data' + os.sep + transcriptomes[1] + os.sep + transcriptomes[1] + ' - localization results by cell.csv')
         dcoords, cnuclei, argmatches, orig_cellID = utils.match_original_ndimage(celllocs, wall, label, cellnum)
         
         meta = utils.generate_cell_metadata(label, objss, nuclei)

@@ -101,11 +101,11 @@ def main():
         GIDX = [1,2,3,4]
         
     genes_to_compare = itertools.combinations(GIDX, 2)
-    wsrc = 'os.pardir' + os.sep + args.cell_wall_directory + os.sep
-    nsrc = 'os.pardir' + os.sep + args.nuclear_directory + os.sep
-    tsrc = 'os.pardir' + os.sep + args.location_directory + os.sep
-    ksrc = 'os.pardir' + os.sep + args.kde_directory + os.sep
-    isrc = 'os.pardir' + os.sep + args.pca_directory + os.sep 
+    wsrc = os.pardir + os.sep + args.cell_wall_directory + os.sep
+    nsrc = os.pardir + os.sep + args.nuclear_directory + os.sep
+    tsrc = os.pardir + os.sep + args.location_directory + os.sep
+    ksrc = os.pardir + os.sep + args.kde_directory + os.sep
+    isrc = os.pardir + os.sep + args.pca_directory + os.sep 
 
     isrc += sample + os.sep
     ksrc += sample + os.sep

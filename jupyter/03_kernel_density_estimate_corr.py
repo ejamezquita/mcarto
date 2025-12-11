@@ -63,10 +63,10 @@ def main():
     else:
         Levels = [args.level_filtration]
 
-    wsrc = 'os.pardir' + os.sep + args.cell_wall_directory + os.sep
-    nsrc = 'os.pardir' + os.sep + args.nuclear_directory + os.sep
-    tsrc = 'os.pardir' + os.sep + args.location_directory + os.sep
-    ksrc = 'os.pardir' + os.sep + args.kde_directory + os.sep + sample + os.sep
+    wsrc = os.pardir + os.sep + args.cell_wall_directory + os.sep
+    nsrc = os.pardir + os.sep + args.nuclear_directory + os.sep
+    tsrc = os.pardir + os.sep + args.location_directory + os.sep
+    ksrc = os.pardir + os.sep + args.kde_directory + os.sep + sample + os.sep
 
     bw = args.kde_bandwidth
     stepsize = args.grid_stepsize
@@ -94,7 +94,7 @@ def main():
     zmax = np.max(tlocs['Z']+stepsize)
     
     for level in Levels:
-        dst = 'os.pardir' + os.sep + level + 'level' + os.sep + sample + os.sep
+        dst = os.pardir + os.sep + level + 'level' + os.sep + sample + os.sep
         if not os.path.isdir(dst):
             os.mkdir(dst)
         for i in range(len(Genes)):
@@ -177,7 +177,7 @@ def main():
                         # # Cubical persistence
 
                         for level in Levels:
-                            tdst = 'os.pardir' + os.sep + level + 'level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep
+                            tdst = os.pardir + os.sep + level + 'level' + os.sep + sample + os.sep + transcriptomes[tidx] + os.sep
                             filename = tdst + transcriptomes[tidx] + '_-_{}_p{}_s{}_bw{}_c{:06d}.json'.format(level,PP,stepsize,bw,cidx)
                             cc = gd.CubicalComplex(top_dimensional_cells = utils.get_level_filtration(kde, level) )
                             pers = cc.persistence(homology_coeff_field=2, min_persistence=1e-15)
